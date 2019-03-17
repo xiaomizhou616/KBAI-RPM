@@ -16,7 +16,7 @@ from PIL import Image, ImageChops
 import numpy as np
 
 SAME_IMAGE_MAX_RMS = 0.2
-SAME_DIFF_RMS_MAX = 0.1
+SAME_DIFF_RMS_MAX = 0.13
 
 class Agent:
     # The default constructor for your Agent. Make sure to execute any
@@ -42,7 +42,7 @@ class Agent:
         self.log('{}: {}'.format(problem.name, problem.problemType))
 
         # DEBUG
-        # if problem.name != 'Basic Problem B-06':
+        # if problem.name != 'Basic Problem B-10':
         #     return -1 
         t = problem.problemType
 
@@ -289,6 +289,9 @@ class Agent:
 
         diff1 = ImageChops.difference(get_image('A'), get_image('C'))
         diff2 = ImageChops.difference(get_image('B'), get_image('*'))
+
+        if diff1 == diff2:
+            return 1
         rms = rms_diff(diff1, diff2)
         # print(rms, choice.name)
         if rms < SAME_DIFF_RMS_MAX:
@@ -308,6 +311,9 @@ class Agent:
 
         diff1 = ImageChops.difference(get_image('A'), get_image('B'))
         diff2 = ImageChops.difference(get_image('C'), get_image('*'))
+        if diff1 == diff2:
+            return 1
+
         rms = rms_diff(diff1, diff2)
         # print(rms, choice.name)
         if rms < SAME_DIFF_RMS_MAX:
