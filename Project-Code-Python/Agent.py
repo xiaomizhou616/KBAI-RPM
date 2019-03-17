@@ -15,7 +15,7 @@ import math
 from PIL import Image, ImageChops
 import numpy as np
 
-SAME_IMAGE_MAX_RMS = 0.2
+SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.13
 SAME_INCREMENTAL_DIFF_STD = 0.0025
 
@@ -43,7 +43,7 @@ class Agent:
         self.log('{}: {}'.format(problem.name, problem.problemType))
 
         # DEBUG
-        # if problem.name != 'Basic Problem C-03':
+        # if problem.name != 'Basic Problem B-06':
         #     return -1 
         t = problem.problemType
 
@@ -97,15 +97,25 @@ class Agent:
                 self.log('flip_vertically', ret)
             sum += ret * 10
 
+            ret = Agent.flip_diagnoally_top_left_to_bottom_right(dimension, matrix, choice)
+            if ret > 0:
+                self.log('flip_diagnoally_top_left_to_bottom_right', ret)
+            sum += ret * 2
+
+            ret = Agent.flip_diagnoally_top_right_to_bottom_left(dimension, matrix, choice)
+            if ret > 0:
+                self.log('flip_diagnoally_top_right_to_bottom_left', ret)
+            sum += ret * 2
+
             ret = Agent.transpose_left_to_right(dimension, matrix, choice)
             if ret > 0:
                 self.log('transpose_left_to_right', ret)
-            sum += ret * 2
+            sum += ret * 5
 
             ret = Agent.transpose_top_to_bottom(dimension, matrix, choice)
             if ret > 0:
                 self.log('transpose_top_to_bottom', ret)
-            sum += ret * 2
+            sum += ret * 5
 
             ret = Agent.same_diff_vertically(dimension, matrix, choice)
             if ret > 0:
@@ -215,6 +225,56 @@ class Agent:
             image0 = get_image(pair[0])
             image1 = get_image(pair[1])
             if not is_same_image(image0.transpose(Image.FLIP_TOP_BOTTOM), image1):
+                return 0
+
+        return 1
+
+    @staticmethod
+    def flip_diagnoally_top_left_to_bottom_right(dimension, matrix, choice):
+        compare_pairs_map = {
+            # A B
+            # C *
+            '2x2': [ '**', 'AA', 'BC' ],
+            # A B C
+            # D E F
+            # G H *
+            '3x3': [ '**', 'AA', 'BD', 'CG', 'FH', 'EE']
+        }
+        def get_image(name):
+            if name == '*':
+                return Image.open(choice.visualFilename)
+            else:
+                return Image.open(matrix.get(name).visualFilename)
+
+        for pair in compare_pairs_map[dimension]:
+            image0 = get_image(pair[0])
+            image1 = get_image(pair[1])
+            if not is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_270), image1):
+                return 0
+
+        return 1
+
+    @staticmethod
+    def flip_diagnoally_top_right_to_bottom_left(dimension, matrix, choice):
+        compare_pairs_map = {
+            # A B
+            # C *
+            '2x2': [ '*A', 'BB', 'CC' ],
+            # A B C
+            # D E F
+            # G H *
+            '3x3': [ '*A', 'BF', 'CC', 'DH', 'EE', 'GG']
+        }
+        def get_image(name):
+            if name == '*':
+                return Image.open(choice.visualFilename)
+            else:
+                return Image.open(matrix.get(name).visualFilename)
+        for pair in compare_pairs_map[dimension]:
+            image0 = get_image(pair[0])
+            image1 = get_image(pair[1])
+            # print(pair, rms_diff(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90), image1))
+            if not is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90), image1):
                 return 0
 
         return 1
@@ -337,6 +397,7 @@ class Agent:
 
         diff_of_diff = [diffs[2]-diffs[1], diffs[1] - diffs[0]]
         std = np.std(np.array(diff_of_diff))
+        # print('std', std)
         if std < SAME_INCREMENTAL_DIFF_STD:
             return 1
         # if abs((diffs[2] - diffs[1]) - (diffs[1] - diffs[0])) < 0.1 * avg
@@ -429,4 +490,4 @@ def rms_diff(image1, image2):
 def is_same_image(image1, image2):
     rms = rms_diff(image1, image2)
     # print('is_same_image', rms)
-    return rms <= 0.15
+    return rms <= SAME_IMAGE_MAX_RMS
