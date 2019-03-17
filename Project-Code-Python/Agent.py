@@ -398,6 +398,7 @@ class Agent:
 
     @staticmethod
     def same_incremental_diff_vertically(dimension, matrix, choice):
+        score = 0
         if dimension == '2x2':
             return 0
         columns = [['AD', 'DG'], ['BE', 'EH'], ['CF', 'F*']]
@@ -419,7 +420,25 @@ class Agent:
                 return 1
             rms = rms_histogram(diff1, diff2)
             # print('verti rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
-            return rms 
+            return rms
+
+        def get_coverage_diff(a1, b1, a2, b2):
+            total_a1 = sum([i * val for i, val in enumerate(get_image(a1).histogram())])
+            total_b1 = sum([i * val for i, val in enumerate(get_image(b1).histogram())])
+            total_a2 = sum([i * val for i, val in enumerate(get_image(a2).histogram())])
+            total_b2 = sum([i * val for i, val in enumerate(get_image(b2).histogram())])
+            # print('coverage_diff({}, {})'.format(a1, b1), total_a1 - total_b1)
+            # print('coverage_diff({}, {})'.format(a2, b2), total_a2 - total_b2)
+            return (total_b1 - total_a1) / float(total_b2 - total_a2)
+
+        # for m in range(0, 8):
+        #     letter = chr(ord('A') + m)
+        #     if is_same_image(get_image(letter), get_image('*')):
+        #         return 0
+        # for pairs in columns:
+        #     for i in range(0, 2):
+        #         if is_same_image(get_image(pairs[i][0]), get_image(pairs[i][1])):
+        #             return 0
 
         diffs = []
         for pairs in columns:
@@ -432,21 +451,33 @@ class Agent:
         #     letter = chr(ord('A') + m)
         #     if is_same_image(get_image(letter), get_image('*')):
         #         return 0
+        try:
+            coverage_diffs = []
+            for pairs in columns:
+                coverage_diffs.append(get_coverage_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
+            # print(coverage_diffs)
+            coverage_std = np.std(np.array(coverage_diffs))
+            if coverage_std < 0.1:
+                score += 1
+        except ZeroDivisionError as _:
+            pass
+        # print(coverage_std)
 
         std = np.std(np.array(diff_of_diff))
         # print('std', std)
         if std < SAME_INCREMENTAL_DIFF_STD:
-            return 1
+            score += 1
         # if abs((diffs[2] - diffs[1]) - (diffs[1] - diffs[0])) < 0.1 * avg
         # print(diffs)
         # for i in range(len(diffs)):
         #     if i + 1 == len(diffs):
         #         break
         #     print('diffs[{}] - diffs[{}]'.format(i+1, i), diffs[i+1] - diffs[i])
-        return 0
+        return score
 
     @staticmethod
     def same_incremental_diff_horizontally(dimension, matrix, choice):
+        score = 0
         if dimension == '2x2':
             return 0
         rows = [['AB', 'BC'], ['DE', 'EF'], ['GH', 'H*']]
@@ -469,28 +500,54 @@ class Agent:
             # print('hori rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
             return rms
         
+        def get_coverage_diff(a1, b1, a2, b2):
+            total_a1 = sum([i * val for i, val in enumerate(get_image(a1).histogram())])
+            total_b1 = sum([i * val for i, val in enumerate(get_image(b1).histogram())])
+            total_a2 = sum([i * val for i, val in enumerate(get_image(a2).histogram())])
+            total_b2 = sum([i * val for i, val in enumerate(get_image(b2).histogram())])
+            # print('coverage_diff({}, {})'.format(a1, b1), total_a1 - total_b1)
+            # print('coverage_diff({}, {})'.format(a2, b2), total_a2 - total_b2)
+            return float(total_b1 - total_a1) / (total_b2 - total_a2)
+
+        # for m in range(0, 8):
+        #     letter = chr(ord('A') + m)
+        #     if is_same_image(get_image(letter), get_image('*')):
+        #         return 0
+        # for pairs in rows:
+        #     for i in range(0, 2):
+        #         if is_same_image(get_image(pairs[i][0]), get_image(pairs[i][1])):
+        #             return 0
+
+
         diffs = []
         for pairs in rows:
             diffs.append(get_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
 
         diff_of_diff = [diffs[2]-diffs[1], diffs[1] - diffs[0]]
 
-        # for m in range(0, 8):
-        #     letter = chr(ord('A') + m)
-        #     if is_same_image(get_image(letter), get_image('*')):
-        #         return 0
+        coverage_diffs = []
+        try:
+            for pairs in rows:
+                coverage_diffs.append(get_coverage_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
+            # print(coverage_diffs)
+            coverage_std = np.std(np.array(coverage_diffs))
+            if coverage_std < 0.1:
+                score += 1
+        except ZeroDivisionError as _:
+            pass
+        # print(coverage_std)
 
         std = np.std(np.array(diff_of_diff))
         # print('std', std)
         if std < SAME_INCREMENTAL_DIFF_STD:
-            return 1
+            score += 1
         # if abs((diffs[2] - diffs[1]) - (diffs[1] - diffs[0])) < 0.1 * avg
         # print(diffs)
         # for i in range(len(diffs)):
         #     if i + 1 == len(diffs):
         #         break
         #     print('diffs[{}] - diffs[{}]'.format(i+1, i), diffs[i+1] - diffs[i])
-        return 0
+        return score
 
     # @staticmethod
     # def same_attribute_diff_horizontally(dimension, matrix, choice):
