@@ -17,7 +17,7 @@ import numpy as np
 
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
-SAME_INCREMENTAL_DIFF_STD = 0.0025
+SAME_INCREMENTAL_DIFF_STD = 0.0002
 
 class Agent:
     # The default constructor for your Agent. Make sure to execute any
@@ -43,8 +43,8 @@ class Agent:
         self.log('{}: {}'.format(problem.name, problem.problemType))
 
         # DEBUG
-        # if problem.name != 'Basic Problem B-12':
-            # return -1 
+        # if problem.name != 'Basic Problem C-05':
+        #     return -1 
         t = problem.problemType
 
         def get_subset(d, keys):
@@ -409,13 +409,16 @@ class Agent:
                 return Image.open(matrix.get(name).visualFilename)
 
         def get_diff(a1, b1, a2, b2):
-            diff1 = ImageChops.difference(get_image(a1), get_image(b1))
-            diff2 = ImageChops.difference(get_image(a2), get_image(b2))
+            # diff1 = ImageChops.difference(get_image(a1), get_image(b1))
+            # diff2 = ImageChops.difference(get_image(a2), get_image(b2))
+
+            diff1 = ImageChops.subtract(get_image(a1), get_image(b1), 2.0, 128)
+            diff2 = ImageChops.subtract(get_image(a2), get_image(b2), 2.0, 128)
 
             if diff1 == diff2:
                 return 1
-            rms = rms_diff(diff1, diff2)
-            # print('rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
+            rms = rms_histogram(diff1, diff2)
+            # print('verti rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
             return rms 
 
         diffs = []
@@ -455,13 +458,15 @@ class Agent:
                 return Image.open(matrix.get(name).visualFilename)
 
         def get_diff(a1, b1, a2, b2):
-            diff1 = ImageChops.difference(get_image(a1), get_image(b1))
-            diff2 = ImageChops.difference(get_image(a2), get_image(b2))
+            # diff1 = ImageChops.difference(get_image(a1), get_image(b1))
+            # diff2 = ImageChops.difference(get_image(a2), get_image(b2))
 
+            diff1 = ImageChops.subtract(get_image(a1), get_image(b1), 2.0, 128)
+            diff2 = ImageChops.subtract(get_image(a2), get_image(b2), 2.0, 128)
             if diff1 == diff2:
                 return 1
-            rms = rms_diff(diff1, diff2)
-            # print('rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
+            rms = rms_histogram(diff1, diff2)
+            # print('hori rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
             return rms
         
         diffs = []
@@ -476,6 +481,7 @@ class Agent:
         #         return 0
 
         std = np.std(np.array(diff_of_diff))
+        # print('std', std)
         if std < SAME_INCREMENTAL_DIFF_STD:
             return 1
         # if abs((diffs[2] - diffs[1]) - (diffs[1] - diffs[0])) < 0.1 * avg
