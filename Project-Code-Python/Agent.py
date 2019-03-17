@@ -43,7 +43,7 @@ class Agent:
         self.log('{}: {}'.format(problem.name, problem.problemType))
 
         # DEBUG
-        # if problem.name != 'Basic Problem B-06':
+        # if problem.name != 'Basic Problem C-01':
         #     return -1 
         t = problem.problemType
 
@@ -166,17 +166,7 @@ class Agent:
                 ['C', '*'],
                 ['A', 'B']
             ],
-            # A B C
-            # D E F
-            # G H *
-            '3x3': [
-                ['G', '*'],
-                ['A', 'C'],
-                ['D', 'F'],
-                ['B', 'B'],
-                ['E', 'E'],
-                ['H', 'H']
-            ]
+            '3x3': ['G*', 'AC', 'DF', 'BB', 'EE', 'HH']
         }
 
         def get_image(name):
@@ -188,6 +178,7 @@ class Agent:
         for pair in compare_pairs_map[dimension]:
             image0 = get_image(pair[0])
             image1 = get_image(pair[1])
+            # print("flip_hor({})".format(pair), rms_diff(image0.transpose(Image.FLIP_LEFT_RIGHT), image1))
             if not is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT), image1):
                 return 0
 
@@ -300,13 +291,16 @@ class Agent:
             for pair in compare_pairs_map[dimension]:
                 image0 = get_image(pair[0])
                 image1 = get_image(pair[1])
-                if not is_same_image(image0.transpose(option), image1):
-                    return 0
-
+                if option is None:
+                    if not is_same_image(image0, image1):
+                        return 0
+                else:
+                    if not is_same_image(image0.transpose(option), image1):
+                        return 0
             return 1
 
         sum = 0
-        for option in [Image.ROTATE_90, Image.ROTATE_270]:
+        for option in [Image.ROTATE_90, Image.ROTATE_180, Image.ROTATE_270, None]:
             if compare_all(option):
                 sum += 1
 
@@ -334,13 +328,17 @@ class Agent:
                 image0 = get_image(pair[0])
                 image1 = get_image(pair[1])
                 # print('compare ', pair)
-                if not is_same_image(image0.transpose(option), image1):
-                    return 0
+                if option is None:
+                    if not is_same_image(image0, image1):
+                        return 0
+                else:
+                    if not is_same_image(image0.transpose(option), image1):
+                        return 0
 
             return 1
 
         sum = 0
-        for option in [Image.ROTATE_90, Image.ROTATE_270]:
+        for option in [Image.ROTATE_90, Image.ROTATE_180, Image.ROTATE_270, None]:
             if compare_all(option):
                 sum += 1
 
@@ -389,13 +387,20 @@ class Agent:
                 return 1
             rms = rms_diff(diff1, diff2)
             # print('rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
-            return rms
-        
+            return rms 
+
         diffs = []
         for pairs in columns:
             diffs.append(get_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
-
+        # print('diffs', diffs)
         diff_of_diff = [diffs[2]-diffs[1], diffs[1] - diffs[0]]
+        # print('diff_of_diff', diff_of_diff)
+
+        # for m in range(0, 8):
+        #     letter = chr(ord('A') + m)
+        #     if is_same_image(get_image(letter), get_image('*')):
+        #         return 0
+
         std = np.std(np.array(diff_of_diff))
         # print('std', std)
         if std < SAME_INCREMENTAL_DIFF_STD:
@@ -435,6 +440,12 @@ class Agent:
             diffs.append(get_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
 
         diff_of_diff = [diffs[2]-diffs[1], diffs[1] - diffs[0]]
+
+        # for m in range(0, 8):
+        #     letter = chr(ord('A') + m)
+        #     if is_same_image(get_image(letter), get_image('*')):
+        #         return 0
+
         std = np.std(np.array(diff_of_diff))
         if std < SAME_INCREMENTAL_DIFF_STD:
             return 1
