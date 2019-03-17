@@ -43,7 +43,7 @@ class Agent:
         self.log('{}: {}'.format(problem.name, problem.problemType))
 
         # DEBUG
-        # if problem.name != 'Basic Problem C-05':
+        # if problem.name != 'Basic Problem C-10':
         #     return -1 
         t = problem.problemType
 
@@ -457,7 +457,7 @@ class Agent:
                 coverage_diffs.append(get_coverage_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
             # print(coverage_diffs)
             coverage_std = np.std(np.array(coverage_diffs))
-            if coverage_std < 0.1:
+            if coverage_std < 0.2:
                 score += 1
         except ZeroDivisionError as _:
             pass
@@ -531,7 +531,7 @@ class Agent:
                 coverage_diffs.append(get_coverage_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
             # print(coverage_diffs)
             coverage_std = np.std(np.array(coverage_diffs))
-            if coverage_std < 0.1:
+            if coverage_std < 0.2:
                 score += 1
         except ZeroDivisionError as _:
             pass
