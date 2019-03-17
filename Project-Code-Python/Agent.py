@@ -38,10 +38,9 @@ class Agent:
         self.log('{}: {}'.format(problem.name, problem.problemType))
 
         # DEBUG
-        # if problem.name != 'Basic Problem B-03':
+        # if problem.name != 'Basic Problem B-06':
         #     return -1 
         t = problem.problemType
-        self.log(t)
 
         def get_subset(d, keys):
             ret = {}
@@ -74,19 +73,34 @@ class Agent:
     def calculate_fitness(self, dimension, matrix, choice, has_verbal, has_visual):
         sum = 0
 
+        self.log('================= choice: {}'.format(choice.name))
+
         if has_visual:
             # See if every figure in matric pixel-equals to the choice
-            if Agent.all_identical(matrix, choice):
-                self.log('all_identical')
-                sum += 1
+            ret = Agent.all_identical(matrix, choice)
+            if ret > 0:
+                self.log('all_identical', ret)
+            sum += ret * 10
 
-            if Agent.flip_horizontally(dimension, matrix, choice):
-                self.log('flip_horizontally')
-                sum += 1
+            ret = Agent.flip_horizontally(dimension, matrix, choice)
+            if ret > 0:
+                self.log('flip_horizontally', ret)
+            sum += ret * 5
 
-            if Agent.flip_vertically(dimension, matrix, choice):
-                self.log('flip_vertically')
-                sum += 1
+            ret = Agent.flip_vertically(dimension, matrix, choice)
+            if ret > 0:
+                self.log('flip_vertically', ret)
+            sum += ret * 5
+
+            ret = Agent.transpose_left_to_right(dimension, matrix, choice)
+            if ret > 0:
+                self.log('transpose_left_to_right', ret)
+            sum += ret * 2
+
+            ret = Agent.transpose_top_to_bottom(dimension, matrix, choice)
+            if ret > 0:
+                self.log('transpose_top_to_bottom', ret)
+            sum += ret * 2
 
         return sum
 
@@ -140,9 +154,9 @@ class Agent:
             image0 = get_image(pair[0])
             image1 = get_image(pair[1])
             if not is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT), image1):
-                return False
+                return 0
 
-        return True
+        return 1
 
     @staticmethod
     def flip_vertically(dimension, matrix, choice):
@@ -176,12 +190,81 @@ class Agent:
             image0 = get_image(pair[0])
             image1 = get_image(pair[1])
             if not is_same_image(image0.transpose(Image.FLIP_TOP_BOTTOM), image1):
-                return False
+                return 0
 
-        return True
+        return 1
+
+    @staticmethod
+    def transpose_left_to_right(dimension, matrix, choice):
+        compare_pairs_map = {
+            # A B
+            # C *
+            '2x2': [ 'C*', 'AB' ],
+            # A B C
+            # D E F
+            # G H *
+            '3x3': [ 'H*', 'AB', 'BC', 'DE', 'EF', 'GH']
+        }
+        def get_image(name):
+            if name == '*':
+                return Image.open(choice.visualFilename)
+            else:
+                return Image.open(matrix.get(name).visualFilename)
+        
+        def compare_all(option):
+            for pair in compare_pairs_map[dimension]:
+                image0 = get_image(pair[0])
+                image1 = get_image(pair[1])
+                if not is_same_image(image0.transpose(option), image1):
+                    return 0
+
+            return 1
+
+        sum = 0
+        for option in [Image.ROTATE_90, Image.ROTATE_270]:
+            if compare_all(option):
+                sum += 1
+
+        return sum
+
+    @staticmethod
+    def transpose_top_to_bottom(dimension, matrix, choice):
+        compare_pairs_map = {
+            # A B
+            # C *
+            '2x2': [ 'B*', 'AC' ],
+            # A B C
+            # D E F
+            # G H *
+            '3x3': [ 'F*', 'AD', 'BE', 'CF', 'DG', 'EH']
+        }
+        def get_image(name):
+            if name == '*':
+                return Image.open(choice.visualFilename)
+            else:
+                return Image.open(matrix.get(name).visualFilename)
+        
+        def compare_all(option):
+            for pair in compare_pairs_map[dimension]:
+                image0 = get_image(pair[0])
+                image1 = get_image(pair[1])
+                # print('compare ', pair)
+                if not is_same_image(image0.transpose(option), image1):
+                    return 0
+
+            return 1
+
+        sum = 0
+        for option in [Image.ROTATE_90, Image.ROTATE_270]:
+            if compare_all(option):
+                sum += 1
+
+        return sum
 
 def is_same_image(image1, image2):
     h = ImageChops.difference(image1, image2).histogram()
-    sum = np.array([value * (i % 256 ** 2) for i, value in enumerate(h)]).sum()
+    sum = np.array([value * ((i % 256) ** 2) for i, value in enumerate(h)]).sum()
     rms = np.sqrt(sum / float(image1.size[0] * image1.size[1]))
-    return rms <= 39.33
+
+    # print('is_same_image', rms)
+    return rms <= 100
