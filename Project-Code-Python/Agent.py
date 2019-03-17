@@ -16,7 +16,7 @@ from PIL import Image, ImageChops
 import numpy as np
 
 SAME_IMAGE_MAX_RMS = 0.15
-SAME_DIFF_RMS_MAX = 0.13
+SAME_DIFF_RMS_MAX = 0.001
 SAME_INCREMENTAL_DIFF_STD = 0.0025
 
 class Agent:
@@ -43,8 +43,8 @@ class Agent:
         self.log('{}: {}'.format(problem.name, problem.problemType))
 
         # DEBUG
-        # if problem.name != 'Basic Problem C-01':
-        #     return -1 
+        # if problem.name != 'Basic Problem B-12':
+            # return -1 
         t = problem.problemType
 
         def get_subset(d, keys):
@@ -120,12 +120,12 @@ class Agent:
             ret = Agent.same_diff_vertically(dimension, matrix, choice)
             if ret > 0:
                 self.log('same_diff_vertically', ret)
-            sum += ret
+            sum += ret * 3
 
             ret = Agent.same_diff_horizontally(dimension, matrix, choice)
             if ret > 0:
                 self.log('same_diff_horizontally', ret)
-            sum += ret
+            sum += ret * 3
 
             ret = Agent.same_incremental_diff_vertically(dimension, matrix, choice)
             if ret > 0:
@@ -356,13 +356,42 @@ class Agent:
             else:
                 return Image.open(matrix.get(name).visualFilename)
 
-        diff1 = ImageChops.difference(get_image('A'), get_image('C'))
-        diff2 = ImageChops.difference(get_image('B'), get_image('*'))
+        # diff1 = ImageChops.difference(get_image('A'), get_image('C'))
+        # diff2 = ImageChops.difference(get_image('B'), get_image('*'))
+
+        diff1 = ImageChops.subtract(get_image('A'), get_image('C'), 2.0, 128)
+        diff2 = ImageChops.subtract(get_image('B'), get_image('*'), 2.0, 128)
 
         if diff1 == diff2:
             return 1
-        rms = rms_diff(diff1, diff2)
-        # print(rms, choice.name)
+        rms = rms_histogram(diff1, diff2)
+        # print('horizontal', rms, choice.name)
+        if rms < SAME_DIFF_RMS_MAX:
+            return 1
+        return 0
+
+    @staticmethod
+    def same_diff_horizontally(dimension, matrix, choice):
+        if dimension == '3x3':
+            return 0
+
+        def get_image(name):
+            if name == '*':
+                return Image.open(choice.visualFilename)
+            else:
+                return Image.open(matrix.get(name).visualFilename)
+        # diff1 = ImageChops.difference(get_image('A'), get_image('C'))
+        # diff2 = ImageChops.difference(get_image('B'), get_image('*'))
+
+        diff1 = ImageChops.subtract(get_image('A'), get_image('B'), 2.0, 128)
+        diff2 = ImageChops.subtract(get_image('C'), get_image('*'), 2.0, 128)
+        if diff1 == diff2:
+            return 1
+
+        rms = rms_histogram(diff1, diff2)
+        # print('verti', rms, choice.name)
+        # print(diff1.histogram())
+        # print(diff2.histogram())
         if rms < SAME_DIFF_RMS_MAX:
             return 1
         return 0
@@ -457,28 +486,6 @@ class Agent:
         #     print('diffs[{}] - diffs[{}]'.format(i+1, i), diffs[i+1] - diffs[i])
         return 0
 
-    @staticmethod
-    def same_diff_horizontally(dimension, matrix, choice):
-        if dimension == '3x3':
-            return 0
-
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-
-        diff1 = ImageChops.difference(get_image('A'), get_image('B'))
-        diff2 = ImageChops.difference(get_image('C'), get_image('*'))
-        if diff1 == diff2:
-            return 1
-
-        rms = rms_diff(diff1, diff2)
-        # print(rms, choice.name)
-        if rms < SAME_DIFF_RMS_MAX:
-            return 1
-        return 0
-
     # @staticmethod
     # def same_attribute_diff_horizontally(dimension, matrix, choice):
     #     if dimension == '3x3':
@@ -490,6 +497,14 @@ class Agent:
     #     if dimension == '3x3':
     #         return 0
 
+def rms_histogram(image1, image2):
+    # print(max(image1.histogram()))
+    h1 = np.asarray(image1.histogram()) / float(max(image1.histogram()))
+    # print('h1', h1)
+    h2 = np.array(image2.histogram()) / float(max(image2.histogram()))
+    # print('h2', h2)
+    errors = h1 - h2
+    return math.sqrt(np.mean(np.square(errors)))
 
 def rms_diff(image1, image2):
     errors = np.asarray(ImageChops.difference(image1, image2)) / 255
