@@ -27,3 +27,6 @@ class RavensObject:
         # attribute pairs "shape:square", "size:large", and "filled:yes".
         self.attributes={}
 
+    def __str__(self):
+        return '<name: {}, attributes: {}>'.format(self.name, self.attributes)
+

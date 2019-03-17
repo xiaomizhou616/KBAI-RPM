@@ -38,3 +38,7 @@ class RavensFigure:
         # The filename where your agent can find the imagistic representation of this
         # figure as a .PNG file.
         self.visualFilename="Problems" + os.sep + setName + os.sep + problemName + os.sep + name + ".png"
+
+
+    def __str__(self):
+        return '<name: {}, objects: {}>'.format(self.name, self.objects)
