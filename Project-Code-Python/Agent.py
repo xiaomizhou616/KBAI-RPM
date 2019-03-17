@@ -10,10 +10,13 @@
 
 from __future__ import print_function
 import os
-
+import math
 # Install Pillow and uncomment this line to access image processing.
 from PIL import Image, ImageChops
 import numpy as np
+
+SAME_IMAGE_MAX_RMS = 0.2
+SAME_DIFF_RMS_MAX = 0.1
 
 class Agent:
     # The default constructor for your Agent. Make sure to execute any
@@ -21,6 +24,7 @@ class Agent:
     #
     # Do not add any variables to this signature; they will not be used by
     # main().
+
     def __init__(self):
         self.debug_mode = (os.getenv('XH_DEBUG', "").lower() in ['1', 'true', 'on'])
 
@@ -85,12 +89,12 @@ class Agent:
             ret = Agent.flip_horizontally(dimension, matrix, choice)
             if ret > 0:
                 self.log('flip_horizontally', ret)
-            sum += ret * 5
+            sum += ret * 10
 
             ret = Agent.flip_vertically(dimension, matrix, choice)
             if ret > 0:
                 self.log('flip_vertically', ret)
-            sum += ret * 5
+            sum += ret * 10
 
             ret = Agent.transpose_left_to_right(dimension, matrix, choice)
             if ret > 0:
@@ -101,6 +105,16 @@ class Agent:
             if ret > 0:
                 self.log('transpose_top_to_bottom', ret)
             sum += ret * 2
+
+            ret = Agent.same_diff_vertically(dimension, matrix, choice)
+            if ret > 0:
+                self.log('same_diff_vertically', ret)
+            sum += ret
+
+            ret = Agent.same_diff_horizontally(dimension, matrix, choice)
+            if ret > 0:
+                self.log('same_diff_horizontally', ret)
+            sum += ret
 
         return sum
 
@@ -261,10 +275,54 @@ class Agent:
 
         return sum
 
-def is_same_image(image1, image2):
-    h = ImageChops.difference(image1, image2).histogram()
-    sum = np.array([value * ((i % 256) ** 2) for i, value in enumerate(h)]).sum()
-    rms = np.sqrt(sum / float(image1.size[0] * image1.size[1]))
+    # For questions like Basic Problem B-10
+    @staticmethod
+    def same_diff_vertically(dimension, matrix, choice):
+        if dimension == '3x3':
+            return 0
 
+        def get_image(name):
+            if name == '*':
+                return Image.open(choice.visualFilename)
+            else:
+                return Image.open(matrix.get(name).visualFilename)
+
+        diff1 = ImageChops.difference(get_image('A'), get_image('C'))
+        diff2 = ImageChops.difference(get_image('B'), get_image('*'))
+        rms = rms_diff(diff1, diff2)
+        # print(rms, choice.name)
+        if rms < SAME_DIFF_RMS_MAX:
+            return 1
+        return 0
+
+    @staticmethod
+    def same_diff_horizontally(dimension, matrix, choice):
+        if dimension == '3x3':
+            return 0
+
+        def get_image(name):
+            if name == '*':
+                return Image.open(choice.visualFilename)
+            else:
+                return Image.open(matrix.get(name).visualFilename)
+
+        diff1 = ImageChops.difference(get_image('A'), get_image('B'))
+        diff2 = ImageChops.difference(get_image('C'), get_image('*'))
+        rms = rms_diff(diff1, diff2)
+        # print(rms, choice.name)
+        if rms < SAME_DIFF_RMS_MAX:
+            return 1
+        return 0
+
+
+def rms_diff(image1, image2):
+    errors = np.asarray(ImageChops.difference(image1, image2)) / 255
+    return math.sqrt(np.mean(np.square(errors)))
+    # h = ImageChops.difference(image1, image2).histogram()
+    # sum = np.array([value * ((i % 256) ** 2) for i, value in enumerate(h)]).sum()
+    # return np.sqrt(sum / float(image1.size[0] * image1.size[1]))
+
+def is_same_image(image1, image2):
+    rms = rms_diff(image1, image2)
     # print('is_same_image', rms)
-    return rms <= 100
+    return rms <= 0.15
