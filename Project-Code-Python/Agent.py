@@ -17,6 +17,7 @@ import numpy as np
 
 SAME_IMAGE_MAX_RMS = 0.2
 SAME_DIFF_RMS_MAX = 0.13
+SAME_INCREMENTAL_DIFF_STD = 0.0025
 
 class Agent:
     # The default constructor for your Agent. Make sure to execute any
@@ -42,7 +43,7 @@ class Agent:
         self.log('{}: {}'.format(problem.name, problem.problemType))
 
         # DEBUG
-        # if problem.name != 'Basic Problem B-10':
+        # if problem.name != 'Basic Problem C-03':
         #     return -1 
         t = problem.problemType
 
@@ -114,6 +115,16 @@ class Agent:
             ret = Agent.same_diff_horizontally(dimension, matrix, choice)
             if ret > 0:
                 self.log('same_diff_horizontally', ret)
+            sum += ret
+
+            ret = Agent.same_incremental_diff_vertically(dimension, matrix, choice)
+            if ret > 0:
+                self.log('same_incremental_diff_vertically', ret)
+            sum += ret
+
+            ret = Agent.same_incremental_diff_horizontally(dimension, matrix, choice)
+            if ret > 0:
+                self.log('same_incremental_diff_horizontally', ret)
             sum += ret
 
         return sum
@@ -299,6 +310,82 @@ class Agent:
         return 0
 
     @staticmethod
+    def same_incremental_diff_vertically(dimension, matrix, choice):
+        if dimension == '2x2':
+            return 0
+        columns = [['AD', 'DG'], ['BE', 'EH'], ['CF', 'F*']]
+
+        def get_image(name):
+            if name == '*':
+                return Image.open(choice.visualFilename)
+            else:
+                return Image.open(matrix.get(name).visualFilename)
+
+        def get_diff(a1, b1, a2, b2):
+            diff1 = ImageChops.difference(get_image(a1), get_image(b1))
+            diff2 = ImageChops.difference(get_image(a2), get_image(b2))
+
+            if diff1 == diff2:
+                return 1
+            rms = rms_diff(diff1, diff2)
+            # print('rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
+            return rms
+        
+        diffs = []
+        for pairs in columns:
+            diffs.append(get_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
+
+        diff_of_diff = [diffs[2]-diffs[1], diffs[1] - diffs[0]]
+        std = np.std(np.array(diff_of_diff))
+        if std < SAME_INCREMENTAL_DIFF_STD:
+            return 1
+        # if abs((diffs[2] - diffs[1]) - (diffs[1] - diffs[0])) < 0.1 * avg
+        # print(diffs)
+        # for i in range(len(diffs)):
+        #     if i + 1 == len(diffs):
+        #         break
+        #     print('diffs[{}] - diffs[{}]'.format(i+1, i), diffs[i+1] - diffs[i])
+        return 0
+
+    @staticmethod
+    def same_incremental_diff_horizontally(dimension, matrix, choice):
+        if dimension == '2x2':
+            return 0
+        rows = [['AB', 'BC'], ['DE', 'EF'], ['GH', 'H*']]
+
+        def get_image(name):
+            if name == '*':
+                return Image.open(choice.visualFilename)
+            else:
+                return Image.open(matrix.get(name).visualFilename)
+
+        def get_diff(a1, b1, a2, b2):
+            diff1 = ImageChops.difference(get_image(a1), get_image(b1))
+            diff2 = ImageChops.difference(get_image(a2), get_image(b2))
+
+            if diff1 == diff2:
+                return 1
+            rms = rms_diff(diff1, diff2)
+            # print('rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
+            return rms
+        
+        diffs = []
+        for pairs in rows:
+            diffs.append(get_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
+
+        diff_of_diff = [diffs[2]-diffs[1], diffs[1] - diffs[0]]
+        std = np.std(np.array(diff_of_diff))
+        if std < SAME_INCREMENTAL_DIFF_STD:
+            return 1
+        # if abs((diffs[2] - diffs[1]) - (diffs[1] - diffs[0])) < 0.1 * avg
+        # print(diffs)
+        # for i in range(len(diffs)):
+        #     if i + 1 == len(diffs):
+        #         break
+        #     print('diffs[{}] - diffs[{}]'.format(i+1, i), diffs[i+1] - diffs[i])
+        return 0
+
+    @staticmethod
     def same_diff_horizontally(dimension, matrix, choice):
         if dimension == '3x3':
             return 0
@@ -319,6 +406,17 @@ class Agent:
         if rms < SAME_DIFF_RMS_MAX:
             return 1
         return 0
+
+    # @staticmethod
+    # def same_attribute_diff_horizontally(dimension, matrix, choice):
+    #     if dimension == '3x3':
+    #         return 0
+
+
+    # @staticmethod
+    # def same_attribute_diff_vertically(dimension, matrix, choice):
+    #     if dimension == '3x3':
+    #         return 0
 
 
 def rms_diff(image1, image2):
