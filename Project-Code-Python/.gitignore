@@ -1,3 +1,5 @@
+*.csv
+*.pyc
 .bonnie
 .python2
 .vscode
