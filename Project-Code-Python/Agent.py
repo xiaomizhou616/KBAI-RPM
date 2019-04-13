@@ -1,13 +1,3 @@
-# Your Agent for solving Raven's Progressive Matrices. You MUST modify this file.
-#
-# You may also create and submit new files in addition to modifying this file.
-#
-# Make sure your file retains methods with the signatures:
-# def __init__(self)
-# def Solve(self,problem)
-#
-# These methods will be necessary for the project's main method to run.
-
 from __future__ import print_function
 import os
 import math
@@ -15,9 +5,111 @@ import math
 from PIL import Image, ImageChops
 import numpy as np
 
+# Select a specific question to evaluate, will be evaluated as name.startswith(PROBLEM_STARTS_WITH)
+# - '' (empty string) means all
+# - 'Basic Problem' means all basic problems
+# - 'Basic Problem B-10' means only basic problem B-10
+PROBLEM_STARTS_WITH = ''
+
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
 SAME_INCREMENTAL_DIFF_STD = 0.0002
+
+# log function, will not print message if env var XH_DEBUG is not set
+def log(*args):
+    flag = (os.getenv('XH_DEBUG', "").lower() in ['1', 'true', 'on'])
+    if flag:
+        print(*args)
+
+class ProblemImages:
+    KEYS = {
+        '2x2': dict(matrix='ABC', choice='123456'),
+        '3x3': dict(matrix='ABCDEFGH', choice='12345678')
+    }
+
+    def __init__(self, type, figures):
+        self.type = type
+        self.images = {}
+
+        read_image = lambda k: Image.open(figures.get(k).visualFilename)
+
+        self.keys = keys = ProblemImages.KEYS[self.type]
+
+        self.matrix_keys = keys['matrix']
+        self.choice_keys = keys['choice']
+
+        for k in keys['matrix'] + keys['choice']:
+            self.images[k] = read_image(k)
+
+    def check_all_pairs(self, pairs, predicate):
+        # return True only if every pair satisfies
+        for pair in pairs:
+            image0 = self.images[pair[0]]
+            image1 = self.images[pair[1]]
+            if not predicate(image0, image1):
+                return False
+
+        return True
+
+class LocalPatternChecker:
+    # Check if the entire matrix has certian local transition pattern
+
+    def __init__(self, ProblemImages):
+        self.problem = ProblemImages
+
+    def check_preset(self):
+        return np.zeros(len(self.problem.choice_keys))
+
+class GlobalPatternChecker:
+    # Check if the entire matrix, viewed as one picture, has certain pattern
+    PAIRS = {
+        # A B
+        # C ?
+        '2x2': [
+            # For PREDS [0] to [3]
+            ['AB', 'C?'],
+            ['AC', 'B?'],
+            ['AA', 'BC', '??'],
+            ['BB', 'A?', 'C?']
+        ],
+        # A B C
+        # D E F
+        # G H ?
+        '3x3': [
+            # For PREDS [0] to [3]
+            ['AC', 'BB', 'DF', 'EE', 'G?', 'HH'],
+            ['AG', 'DD', 'BH', 'EE', 'C?', 'FF'],
+            ['AA', 'BD', 'CG', 'FH', 'EE', '??'],
+            ['CC', 'EE', 'GG', 'BF', 'DH', 'A?']
+        ]
+    }
+
+    PREDS = [
+        # flip horizontally
+        lambda image0, image1: is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT), image1),
+        # flip vertically
+        lambda image0, image1: is_same_image(image0.transpose(Image.FLIP_TOP_BOTTOM), image1),
+        # flip diagnoally (axis: top-left to bottom-right)
+        lambda image0, image1: is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_270), image1),
+        # flip diagnoally (axis: top-right to bottom-left)
+        lambda image0, image1: is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90), image1)
+    ]
+
+    def __init__(self, ProblemImages):
+        self.problem = ProblemImages
+
+    def check_preset(self):
+        pair_arry = GlobalPatternChecker.PAIRS[self.problem.type]
+        preds = GlobalPatternChecker.PREDS
+
+        score_acc = np.zeros(len(self.problem.choice_keys))
+
+        for (pairs, pred) in zip(pair_arry, preds):
+            result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
+            score = np.array([1 if b else 0 for b in result])
+            score_acc += score
+
+        return score_acc
 
 class Agent:
     # The default constructor for your Agent. Make sure to execute any
@@ -27,7 +119,7 @@ class Agent:
     # main().
 
     def __init__(self):
-        self.debug_mode = (os.getenv('XH_DEBUG', "").lower() in ['1', 'true', 'on'])
+        pass
 
     # The primary method for solving incoming Raven's Progressive Matrices.
     # For each problem, your Agent's Solve() method will be called. At the
@@ -39,109 +131,73 @@ class Agent:
     # Make sure to return your answer *as an integer* at the end of Solve().
     # Returning your answer as a string may cause your program to crash.
     def Solve(self, problem):
-
-        self.log('{}: {}'.format(problem.name, problem.problemType))
-
-        # DEBUG
-        # if problem.name != 'Basic Problem C-10':
-        #     return -1 
-        t = problem.problemType
-
-        def get_subset(d, keys):
-            ret = {}
-            for k in keys:
-                ret[k] = d.get(k)
-            return ret
-        if t == '2x2':
-            matrix = get_subset(problem.figures, ['A', 'B', 'C'])
-            choices = get_subset(problem.figures, [str(i) for i in range(1, 7)])
-        elif t == '3x3':
-            matrix = get_subset(problem.figures, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'])
-            choices = get_subset(problem.figures, [str(i) for i in range(1, 9)])
-        else:
-            self.log("Unknown problem type {}".format(t))
+        # skip problems that does not match
+        if not problem.name.startswith(PROBLEM_STARTS_WITH):
             return -1
 
-        return self.find_fitted(t, matrix, choices, problem.hasVerbal, problem.hasVisual)
+        log('{}: {}'.format(problem.name, problem.problemType))
 
-    def find_fitted(self, dimension, matrix, choices, has_verbal=False, has_visual=False):
-        answer = "-1"
-        max_fitness = .0
-        for c in choices.keys():
-            # calculate the fitness
-            fitness = self.calculate_fitness(dimension, matrix, choices[c], has_verbal, has_visual)
-            if fitness > max_fitness:
-                answer = c
-                max_fitness = fitness
-        return int(answer)
+        p = ProblemImages(problem.problemType, problem.figures)
+
+        return self.FindTopMatch(p)
+
+    def FindTopMatch(self, ProblemImages):
+        # Do global pattern checking
+        g = GlobalPatternChecker(ProblemImages)
+        global_scores = g.check_preset()
+        log('global_score', global_scores)
+
+        # Do local pattern checking
+        l = LocalPatternChecker(ProblemImages)
+        local_scores = g.check_preset()
+
+        sum = np.array(global_scores) + np.array(local_scores)
+
+        return np.argmax(sum) + 1
 
     def calculate_fitness(self, dimension, matrix, choice, has_verbal, has_visual):
         sum = 0
 
-        self.log('================= choice: {}'.format(choice.name))
+        log('================= choice: {}'.format(choice.name))
 
         if has_visual:
             # See if every figure in matric pixel-equals to the choice
             ret = Agent.all_identical(matrix, choice)
             if ret > 0:
-                self.log('all_identical', ret)
+                log('all_identical', ret)
             sum += ret * 10
-
-            ret = Agent.flip_horizontally(dimension, matrix, choice)
-            if ret > 0:
-                self.log('flip_horizontally', ret)
-            sum += ret * 10
-
-            ret = Agent.flip_vertically(dimension, matrix, choice)
-            if ret > 0:
-                self.log('flip_vertically', ret)
-            sum += ret * 10
-
-            ret = Agent.flip_diagnoally_top_left_to_bottom_right(dimension, matrix, choice)
-            if ret > 0:
-                self.log('flip_diagnoally_top_left_to_bottom_right', ret)
-            sum += ret * 2
-
-            ret = Agent.flip_diagnoally_top_right_to_bottom_left(dimension, matrix, choice)
-            if ret > 0:
-                self.log('flip_diagnoally_top_right_to_bottom_left', ret)
-            sum += ret * 2
 
             ret = Agent.transpose_left_to_right(dimension, matrix, choice)
             if ret > 0:
-                self.log('transpose_left_to_right', ret)
+                log('transpose_left_to_right', ret)
             sum += ret * 5
 
             ret = Agent.transpose_top_to_bottom(dimension, matrix, choice)
             if ret > 0:
-                self.log('transpose_top_to_bottom', ret)
+                log('transpose_top_to_bottom', ret)
             sum += ret * 5
 
             ret = Agent.same_diff_vertically(dimension, matrix, choice)
             if ret > 0:
-                self.log('same_diff_vertically', ret)
+                log('same_diff_vertically', ret)
             sum += ret * 3
 
             ret = Agent.same_diff_horizontally(dimension, matrix, choice)
             if ret > 0:
-                self.log('same_diff_horizontally', ret)
+                log('same_diff_horizontally', ret)
             sum += ret * 3
 
             ret = Agent.same_incremental_diff_vertically(dimension, matrix, choice)
             if ret > 0:
-                self.log('same_incremental_diff_vertically', ret)
+                log('same_incremental_diff_vertically', ret)
             sum += ret
 
             ret = Agent.same_incremental_diff_horizontally(dimension, matrix, choice)
             if ret > 0:
-                self.log('same_incremental_diff_horizontally', ret)
+                log('same_incremental_diff_horizontally', ret)
             sum += ret
 
         return sum
-
-    def log(self, *args):
-        if self.debug_mode:
-            print(*args)
 
     @staticmethod
     def all_identical(matrix, choice):
