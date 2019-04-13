@@ -51,14 +51,76 @@ class ProblemImages:
 
         return True
 
-class LocalPatternChecker:
-    # Check if the entire matrix has certian local transition pattern
+def shift_pair(problem_type, direction, offset):
+    matrix = {
+        'row': {
+            '2x2': ['AB', 'C?'],
+            '3x3': ['ABC', 'DEF', 'GH?']
+        },
+        'column': {
+            '2x2': ['AC', 'B?'],
+            '3x3': ['ADG', 'BEH', 'CF?']
+        }
+    }
 
+    m = matrix[direction][problem_type]
+    offset = offset % len(m)
+
+    for row in range(1, len(m)):
+        shift = (offset * row) % len(m)
+        m[row] = m[row][shift:] + m[row][:shift]
+
+    pairs = []
+    for row in range(1, len(m)):
+        for col in range(0, len(m)):
+            pairs.append(m[row-1][col] + m[row][col])
+
+    return pairs
+
+class LocalPatternChecker:
+    ALL_IDENTICAL_PAIRS = {
+        '2x2': ['AB', 'BC', 'C?'],
+        '3x3': ['AB', 'BC', 'CD', 'DE', 'EF', 'FG', 'GH', 'H?']
+    }
+    
+    IMAGE_TRANSITIONS = [
+        lambda image0, image1: image0 == image1,
+        lambda image0, image1: is_same_image(image0.transpose(Image.ROTATE_90), image1),
+        lambda image0, image1: is_same_image(image0.transpose(Image.ROTATE_180), image1),
+        lambda image0, image1: is_same_image(image0.transpose(Image.ROTATE_270), image1)
+    ]
+
+    # Check if the entire matrix has certian local transition pattern
     def __init__(self, ProblemImages):
         self.problem = ProblemImages
 
     def check_preset(self):
-        return np.zeros(len(self.problem.choice_keys))
+        return self.check_all_identical() + self.check_directional_transition()
+
+    def check_all_identical(self):
+        pairs = LocalPatternChecker.ALL_IDENTICAL_PAIRS[self.problem.type]
+        pred = LocalPatternChecker.IMAGE_TRANSITIONS[0]
+
+        result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
+        score = np.array([1 if b else 0 for b in result])
+        return score
+
+    def check_directional_transition(self):
+        max_shift = {
+            '2x2': 2,
+            '3x3': 3
+        }
+
+        score_acct = np.zeros(len(self.problem.choice_keys))
+        for pred in LocalPatternChecker.IMAGE_TRANSITIONS:
+            for dir in ['row', 'column']:
+                for offset in range(0, max_shift[self.problem.type]):
+                    pairs = shift_pair(self.problem.type, dir, offset)
+                    result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
+                    score = np.array([1 if b else 0 for b in result])
+                    score_acct += score
+
+        return score_acct
 
 class GlobalPatternChecker:
     # Check if the entire matrix, viewed as one picture, has certain pattern
@@ -149,7 +211,8 @@ class Agent:
 
         # Do local pattern checking
         l = LocalPatternChecker(ProblemImages)
-        local_scores = g.check_preset()
+        local_scores = l.check_preset()
+        log('local_score', local_scores)
 
         sum = np.array(global_scores) + np.array(local_scores)
 
