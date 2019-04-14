@@ -24,8 +24,8 @@ Basic Problem C-10,5,Incorrect,7
 Basic Problem C-11,4,Correct,4
 Basic Problem C-12,-1,Skipped,8
 Basic Problem D-01,3,Correct,3
-Basic Problem D-02,-1,Skipped,1
-Basic Problem D-03,-1,Skipped,3
+Basic Problem D-02,1,Correct,1
+Basic Problem D-03,2,Incorrect,3
 Basic Problem D-04,-1,Skipped,1
 Basic Problem D-05,5,Incorrect,7
 Basic Problem D-06,-1,Skipped,1
@@ -33,7 +33,7 @@ Basic Problem D-07,-1,Skipped,1
 Basic Problem D-08,-1,Skipped,4
 Basic Problem D-09,-1,Skipped,3
 Basic Problem D-10,-1,Skipped,1
-Basic Problem D-11,-1,Skipped,3
+Basic Problem D-11,3,Correct,3
 Basic Problem D-12,-1,Skipped,3
 Basic Problem E-01,-1,Skipped,1
 Basic Problem E-02,-1,Skipped,7

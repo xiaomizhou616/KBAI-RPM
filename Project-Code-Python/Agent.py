@@ -4,6 +4,9 @@ import math
 # Install Pillow and uncomment this line to access image processing.
 from PIL import Image, ImageChops
 import numpy as np
+# import matplotlib.pyplot as plt
+
+# np.set_printoptions(linewidth=200)
 
 # Select a specific question to evaluate, will be evaluated as name.startswith(PROBLEM_STARTS_WITH)
 # - '' (empty string) means all
@@ -14,6 +17,47 @@ PROBLEM_STARTS_WITH = ''
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
 SAME_INCREMENTAL_DIFF_STD = 0.0002
+
+def two_means(data):
+    # return two clusters
+    k = 2
+    centriods = np.array([np.min(data), np.max(data)])
+    # print('centriods', centriods)
+
+    while True:
+        cluster = [[], []]
+        for v in data:
+            dis = np.abs(np.array([v] * k) - centriods)
+            cluster[np.argmin(dis)].append(v)
+        new_centriods = [np.mean(arr) for arr in cluster]
+        if np.all(new_centriods == centriods):
+            # return centriods, [(np.min(cluster[i]), np.max(cluster[i])) for i in range(0, k)]
+            return cluster
+        centriods = new_centriods
+
+# two_means([0,0,0,0,1,1,1,10,10,10,8,8,8,8,7,7,7])
+# two_means([0,0.100,0.2,0.3,7,8,9,9.9,9.9])
+
+def rms_histogram(image1, image2):
+    # print(max(image1.histogram()))
+    h1 = np.asarray(image1.histogram()) / float(max(image1.histogram()))
+    # print('h1', h1)
+    h2 = np.array(image2.histogram()) / float(max(image2.histogram()))
+    # print('h2', h2)
+    errors = h1 - h2
+    return math.sqrt(np.mean(np.square(errors)))
+
+def rms_diff(image1, image2):
+    errors = np.asarray(ImageChops.difference(image1, image2)) / 255
+    return math.sqrt(np.mean(np.square(errors)))
+    # h = ImageChops.difference(image1, image2).histogram()
+    # sum = np.array([value * ((i % 256) ** 2) for i, value in enumerate(h)]).sum()
+    # return np.sqrt(sum / float(image1.size[0] * image1.size[1]))
+
+def is_same_image(image1, image2):
+    rms = rms_diff(image1, image2)
+    # log('is_same_image', rms)
+    return rms <= SAME_IMAGE_MAX_RMS
 
 # log function, will not print message if env var XH_DEBUG is not set
 def log(*args):
@@ -27,7 +71,8 @@ class ProblemImages:
         '3x3': dict(matrix='ABCDEFGH', choice='12345678')
     }
 
-    def __init__(self, type, figures):
+    def __init__(self, name, type, figures):
+        self.name = name
         self.type = type
         self.images = {}
 
@@ -41,12 +86,42 @@ class ProblemImages:
         for k in keys['matrix'] + keys['choice']:
             self.images[k] = read_image(k)
 
-    def check_all_pairs(self, pairs, predicate):
+        data = []
+        keys = self.images.keys()
+        for (i1, k1) in enumerate(keys):
+            for (i2, k2) in enumerate(keys):
+                if i1 < i2 and k1 in 'ABCDEFGHI' and k2 in 'ABCDEFGHI12345678':
+                    v1 = self.images[k1]
+                    v2 = self.images[k2]
+                    data.append(rms_diff(v1, v2))
+
+        self.rms_data = np.array(data)
+
+        cluster = two_means(self.rms_data)
+        cluster_range = [(np.min(cluster[i]), np.max(cluster[i])) for i in range(0, 2)]
+        # log(cluster_range)
+
+        # self.image_equal_threshold = np.min([SAME_IMAGE_MAX_RMS, np.mean([cluster_range[0][1], cluster_range[1][0]])])
+        self.image_equal_threshold = SAME_IMAGE_MAX_RMS
+        log(self.image_equal_threshold)
+
+
+
+    def image_equal(self, image0, image1):
+        rms = rms_diff(image0, image1)
+        # log('self.image_equal', rms)
+        return rms <= self.image_equal_threshold
+
+    def check_all_pairs(self, pairs, predicate, debug=False):
         # return True only if every pair satisfies
         for pair in pairs:
             image0 = self.images[pair[0]]
             image1 = self.images[pair[1]]
-            if not predicate(image0, image1):
+            if pair == 'E2' or pair == 'E3' or pair == 'E4':
+                log('false positive pair', pair)
+            if not predicate(image0, image1, self.image_equal):
+                if debug:
+                    log('outlier pair', pair)
                 return False
 
         return True
@@ -84,10 +159,11 @@ class LocalPatternChecker:
     }
     
     IMAGE_TRANSITIONS = [
-        lambda image0, image1: image0 == image1,
-        lambda image0, image1: is_same_image(image0.transpose(Image.ROTATE_90), image1),
-        lambda image0, image1: is_same_image(image0.transpose(Image.ROTATE_180), image1),
-        lambda image0, image1: is_same_image(image0.transpose(Image.ROTATE_270), image1)
+        # lambda image0, image1: image0 == image1,
+        lambda image0, image1, equal=is_same_image: equal(image0, image1),
+        lambda image0, image1, equal=is_same_image: equal(image0.transpose(Image.ROTATE_90), image1),
+        lambda image0, image1, equal=is_same_image: equal(image0.transpose(Image.ROTATE_180), image1),
+        lambda image0, image1, equal=is_same_image: equal(image0.transpose(Image.ROTATE_270), image1)
     ]
 
     # Check if the entire matrix has certian local transition pattern
@@ -113,11 +189,14 @@ class LocalPatternChecker:
 
         score_acct = np.zeros(len(self.problem.choice_keys))
         for pred in LocalPatternChecker.IMAGE_TRANSITIONS:
+            log('======= pred =======')
             for dir in ['row', 'column']:
                 for offset in range(0, max_shift[self.problem.type]):
                     pairs = shift_pair(self.problem.type, dir, offset)
-                    result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
+                    debug = 'AE' in pairs and 'E?' in pairs
+                    result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred, debug) for c in self.problem.choice_keys]
                     score = np.array([1 if b else 0 for b in result])
+                    log('dir={}, offset={}, pairs={}'.format(dir, offset, pairs), score)
                     score_acct += score
 
         return score_acct
@@ -148,13 +227,13 @@ class GlobalPatternChecker:
 
     PREDS = [
         # flip horizontally
-        lambda image0, image1: is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT), image1),
+        lambda image0, image1, equal=is_same_image: is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT), image1),
         # flip vertically
-        lambda image0, image1: is_same_image(image0.transpose(Image.FLIP_TOP_BOTTOM), image1),
+        lambda image0, image1, equal=is_same_image: is_same_image(image0.transpose(Image.FLIP_TOP_BOTTOM), image1),
         # flip diagnoally (axis: top-left to bottom-right)
-        lambda image0, image1: is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_270), image1),
+        lambda image0, image1, equal=is_same_image: is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_270), image1),
         # flip diagnoally (axis: top-right to bottom-left)
-        lambda image0, image1: is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90), image1)
+        lambda image0, image1, equal=is_same_image: is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90), image1)
     ]
 
     def __init__(self, ProblemImages):
@@ -169,6 +248,7 @@ class GlobalPatternChecker:
         for (pairs, pred) in zip(pair_arry, preds):
             result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
             score = np.array([1 if b else 0 for b in result])
+            log(score)
             score_acc += score
 
         return score_acc
@@ -199,7 +279,7 @@ class Agent:
 
         log('{}: {}'.format(problem.name, problem.problemType))
 
-        p = ProblemImages(problem.problemType, problem.figures)
+        p = ProblemImages(problem.name, problem.problemType, problem.figures)
 
         return self.FindTopMatch(p)
 
@@ -221,6 +301,10 @@ class Agent:
             return -1
 
         return np.argmax(sum) + 1
+
+    def get_problem(self, problem, filename):
+        p = ProblemImages(problem.name, problem.problemType, problem.figures)
+        return p
 
     def calculate_fitness(self, dimension, matrix, choice, has_verbal, has_visual):
         sum = 0
@@ -682,24 +766,3 @@ class Agent:
     # def same_attribute_diff_vertically(dimension, matrix, choice):
     #     if dimension == '3x3':
     #         return 0
-
-def rms_histogram(image1, image2):
-    # print(max(image1.histogram()))
-    h1 = np.asarray(image1.histogram()) / float(max(image1.histogram()))
-    # print('h1', h1)
-    h2 = np.array(image2.histogram()) / float(max(image2.histogram()))
-    # print('h2', h2)
-    errors = h1 - h2
-    return math.sqrt(np.mean(np.square(errors)))
-
-def rms_diff(image1, image2):
-    errors = np.asarray(ImageChops.difference(image1, image2)) / 255
-    return math.sqrt(np.mean(np.square(errors)))
-    # h = ImageChops.difference(image1, image2).histogram()
-    # sum = np.array([value * ((i % 256) ** 2) for i, value in enumerate(h)]).sum()
-    # return np.sqrt(sum / float(image1.size[0] * image1.size[1]))
-
-def is_same_image(image1, image2):
-    rms = rms_diff(image1, image2)
-    # print('is_same_image', rms)
-    return rms <= SAME_IMAGE_MAX_RMS
