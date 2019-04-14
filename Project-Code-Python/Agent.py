@@ -75,6 +75,7 @@ class ProblemImages:
         self.name = name
         self.type = type
         self.images = {}
+        self.rms_sum = 0
 
         read_image = lambda k: Image.open(figures.get(k).visualFilename)
 
@@ -109,8 +110,20 @@ class ProblemImages:
 
     def image_equal(self, image0, image1):
         rms = rms_diff(image0, image1)
+        self.rms_sum += rms
         # log('self.image_equal', rms)
         return rms <= self.image_equal_threshold
+
+    def sum_rms_all_pairs(self, pairs, predicate, debug=False):
+        self.rms_sum = 0 # clear
+
+        for pair in pairs:
+            image0 = self.images[pair[0]]
+            image1 = self.images[pair[1]]
+            if not predicate(image0, image1, self.image_equal):
+                return 100000
+
+        return self.rms_sum
 
     def check_all_pairs(self, pairs, predicate, debug=False):
         # return True only if every pair satisfies
@@ -193,9 +206,11 @@ class LocalPatternChecker:
             for dir in ['row', 'column']:
                 for offset in range(0, max_shift[self.problem.type]):
                     pairs = shift_pair(self.problem.type, dir, offset)
-                    debug = 'AE' in pairs and 'E?' in pairs
-                    result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred, debug) for c in self.problem.choice_keys]
-                    score = np.array([1 if b else 0 for b in result])
+                    # debug = 'AE' in pairs and 'E?' in pairs
+                    # result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred, debug) for c in self.problem.choice_keys]
+                    # score = np.array([1 if b else 0 for b in result])
+                    result = np.array([self.problem.sum_rms_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys])
+                    score = 1 / (result + 1)
                     log('dir={}, offset={}, pairs={}'.format(dir, offset, pairs), score)
                     score_acct += score
 
