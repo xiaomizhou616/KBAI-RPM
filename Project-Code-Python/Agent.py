@@ -216,6 +216,10 @@ class Agent:
 
         sum = np.array(global_scores) + np.array(local_scores)
 
+        top = np.amax(sum)
+        if top == 0:
+            return -1
+
         return np.argmax(sum) + 1
 
     def calculate_fitness(self, dimension, matrix, choice, has_verbal, has_visual):
