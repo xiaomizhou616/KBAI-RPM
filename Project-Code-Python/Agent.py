@@ -156,6 +156,30 @@ class ProblemImages:
 
         return np.std(np.array(rms_in_line)) < SAME_INCREMENTAL_DIFF_STD
 
+    def check_incremental_coverage_diff_directional(self, lines):
+        log('lines', lines)
+        diff_in_line = []
+
+        coverage = lambda img: sum([i * val for i, val in enumerate(img.histogram())])
+
+        for line in lines:
+            diffs = []
+            for (i, pair) in enumerate(line):
+                image0 = self.images[pair[0]]
+                image1 = self.images[pair[1]]
+                diffs.append(coverage(image1) - coverage(image0))
+            diff_in_line.append(diffs)
+
+        ratio = lambda a, b: a/float(b+a) if a + b != 0 else 1
+
+        ratio_in_line = [ratio(line[0], line[1]) for line in diff_in_line]
+        log('ratio_in_line', ratio_in_line)
+
+        std = np.std(np.array(ratio_in_line))
+        log('std', std)
+        return  std < 0.2
+
+
     def check_all_pairs(self, pairs, predicate, debug=False):
         # return True only if every pair satisfies
         for pair in pairs:
@@ -267,14 +291,15 @@ class LocalPatternChecker:
         if self.problem.type == '2x2':
             return score_acct
 
-        for dir in ['row', 'column']:
-            pairs = shift_pair(self.problem.type, dir, 0)
-            pairs_in_line = [[pairs[i], pairs[i+1]] for i in [0, 2, 4]]
-            result = np.array([self.problem.check_incremental_diff_directional([[p.replace('?', c) for p in line] for line in pairs_in_line]) for c in self.problem.choice_keys])
-            score = np.array([1 if b else 0 for b in result])
-            log('dir={}, pairs={}'.format(dir, pairs), score)
+        for check in [self.problem.check_incremental_diff_directional, self.problem.check_incremental_coverage_diff_directional]:
+            for dir in ['row', 'column']:
+                pairs = shift_pair(self.problem.type, dir, 0)
+                pairs_in_line = [[pairs[i], pairs[i+3]] for i in [0, 1, 2]]
+                result = np.array([check([[p.replace('?', c) for p in line] for line in pairs_in_line]) for c in self.problem.choice_keys])
+                score = np.array([1 if b else 0 for b in result])
+                log('dir={}, pairs={}'.format(dir, pairs), score)
 
-            score_acct += score
+                score_acct += score
 
         return score_acct
 
@@ -382,185 +407,3 @@ class Agent:
     def get_problem(self, problem, filename):
         p = ProblemImages(problem.name, problem.problemType, problem.figures)
         return p
-
-    def calculate_fitness(self, dimension, matrix, choice, has_verbal, has_visual):
-        sum = 0
-
-        log('================= choice: {}'.format(choice.name))
-
-        if has_visual:
-            ret = Agent.same_incremental_diff_vertically(dimension, matrix, choice)
-            if ret > 0:
-                log('same_incremental_diff_vertically', ret)
-            sum += ret
-
-            ret = Agent.same_incremental_diff_horizontally(dimension, matrix, choice)
-            if ret > 0:
-                log('same_incremental_diff_horizontally', ret)
-            sum += ret
-
-        return sum
-
-    @staticmethod
-    def same_incremental_diff_vertically(dimension, matrix, choice):
-        score = 0
-        if dimension == '2x2':
-            return 0
-        columns = [['AD', 'DG'], ['BE', 'EH'], ['CF', 'F*']]
-
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-
-        def get_diff(a1, b1, a2, b2):
-            # diff1 = ImageChops.difference(get_image(a1), get_image(b1))
-            # diff2 = ImageChops.difference(get_image(a2), get_image(b2))
-
-            diff1 = ImageChops.subtract(get_image(a1), get_image(b1), 2.0, 128)
-            diff2 = ImageChops.subtract(get_image(a2), get_image(b2), 2.0, 128)
-
-            if diff1 == diff2:
-                return 1
-            rms = rms_histogram(diff1, diff2)
-            # print('verti rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
-            return rms
-
-        def get_coverage_diff(a1, b1, a2, b2):
-            total_a1 = sum([i * val for i, val in enumerate(get_image(a1).histogram())])
-            total_b1 = sum([i * val for i, val in enumerate(get_image(b1).histogram())])
-            total_a2 = sum([i * val for i, val in enumerate(get_image(a2).histogram())])
-            total_b2 = sum([i * val for i, val in enumerate(get_image(b2).histogram())])
-            # print('coverage_diff({}, {})'.format(a1, b1), total_a1 - total_b1)
-            # print('coverage_diff({}, {})'.format(a2, b2), total_a2 - total_b2)
-            return (total_b1 - total_a1) / float(total_b2 - total_a2)
-
-        # for m in range(0, 8):
-        #     letter = chr(ord('A') + m)
-        #     if is_same_image(get_image(letter), get_image('*')):
-        #         return 0
-        # for pairs in columns:
-        #     for i in range(0, 2):
-        #         if is_same_image(get_image(pairs[i][0]), get_image(pairs[i][1])):
-        #             return 0
-
-        diffs = []
-        for pairs in columns:
-            diffs.append(get_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
-        # print('diffs', diffs)
-        diff_of_diff = [diffs[2]-diffs[1], diffs[1] - diffs[0]]
-        # print('diff_of_diff', diff_of_diff)
-
-        # for m in range(0, 8):
-        #     letter = chr(ord('A') + m)
-        #     if is_same_image(get_image(letter), get_image('*')):
-        #         return 0
-        try:
-            coverage_diffs = []
-            for pairs in columns:
-                coverage_diffs.append(get_coverage_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
-            # print(coverage_diffs)
-            coverage_std = np.std(np.array(coverage_diffs))
-            if coverage_std < 0.2:
-                score += 1
-        except ZeroDivisionError as _:
-            pass
-        # print(coverage_std)
-
-        std = np.std(np.array(diff_of_diff))
-        # print('std', std)
-        if std < SAME_INCREMENTAL_DIFF_STD:
-            score += 1
-        # if abs((diffs[2] - diffs[1]) - (diffs[1] - diffs[0])) < 0.1 * avg
-        # print(diffs)
-        # for i in range(len(diffs)):
-        #     if i + 1 == len(diffs):
-        #         break
-        #     print('diffs[{}] - diffs[{}]'.format(i+1, i), diffs[i+1] - diffs[i])
-        return score
-
-    @staticmethod
-    def same_incremental_diff_horizontally(dimension, matrix, choice):
-        score = 0
-        if dimension == '2x2':
-            return 0
-        rows = [['AB', 'BC'], ['DE', 'EF'], ['GH', 'H*']]
-
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-
-        def get_diff(a1, b1, a2, b2):
-            # diff1 = ImageChops.difference(get_image(a1), get_image(b1))
-            # diff2 = ImageChops.difference(get_image(a2), get_image(b2))
-
-            diff1 = ImageChops.subtract(get_image(a1), get_image(b1), 2.0, 128)
-            diff2 = ImageChops.subtract(get_image(a2), get_image(b2), 2.0, 128)
-            if diff1 == diff2:
-                return 1
-            rms = rms_histogram(diff1, diff2)
-            # print('hori rms({}-{},{}-{})'.format(a1, b1, a2, b2), rms)
-            return rms
-        
-        def get_coverage_diff(a1, b1, a2, b2):
-            total_a1 = sum([i * val for i, val in enumerate(get_image(a1).histogram())])
-            total_b1 = sum([i * val for i, val in enumerate(get_image(b1).histogram())])
-            total_a2 = sum([i * val for i, val in enumerate(get_image(a2).histogram())])
-            total_b2 = sum([i * val for i, val in enumerate(get_image(b2).histogram())])
-            # print('coverage_diff({}, {})'.format(a1, b1), total_a1 - total_b1)
-            # print('coverage_diff({}, {})'.format(a2, b2), total_a2 - total_b2)
-            return float(total_b1 - total_a1) / (total_b2 - total_a2)
-
-        # for m in range(0, 8):
-        #     letter = chr(ord('A') + m)
-        #     if is_same_image(get_image(letter), get_image('*')):
-        #         return 0
-        # for pairs in rows:
-        #     for i in range(0, 2):
-        #         if is_same_image(get_image(pairs[i][0]), get_image(pairs[i][1])):
-        #             return 0
-
-
-        diffs = []
-        for pairs in rows:
-            diffs.append(get_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
-
-        diff_of_diff = [diffs[2]-diffs[1], diffs[1] - diffs[0]]
-
-        coverage_diffs = []
-        try:
-            for pairs in rows:
-                coverage_diffs.append(get_coverage_diff(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1]))
-            # print(coverage_diffs)
-            coverage_std = np.std(np.array(coverage_diffs))
-            if coverage_std < 0.2:
-                score += 1
-        except ZeroDivisionError as _:
-            pass
-        # print(coverage_std)
-
-        std = np.std(np.array(diff_of_diff))
-        # print('std', std)
-        if std < SAME_INCREMENTAL_DIFF_STD:
-            score += 1
-        # if abs((diffs[2] - diffs[1]) - (diffs[1] - diffs[0])) < 0.1 * avg
-        # print(diffs)
-        # for i in range(len(diffs)):
-        #     if i + 1 == len(diffs):
-        #         break
-        #     print('diffs[{}] - diffs[{}]'.format(i+1, i), diffs[i+1] - diffs[i])
-        return score
-
-    # @staticmethod
-    # def same_attribute_diff_horizontally(dimension, matrix, choice):
-    #     if dimension == '3x3':
-    #         return 0
-
-
-    # @staticmethod
-    # def same_attribute_diff_vertically(dimension, matrix, choice):
-    #     if dimension == '3x3':
-    #         return 0
