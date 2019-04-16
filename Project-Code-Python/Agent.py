@@ -125,6 +125,22 @@ class ProblemImages:
 
         return self.rms_sum
 
+    def check_diff_similarity_all_pairs(self, pairs):
+        diffs = []
+        for pair in pairs:
+            image0 = self.images[pair[0]]
+            image1 = self.images[pair[1]]
+            diffs.append(ImageChops.subtract(image0, image1, 2.0, 128))
+
+        for (i0, d0) in enumerate(diffs):
+            for (i1, d1) in enumerate(diffs):
+                if i0 < i1:
+                    rms = rms_histogram(d0, d1)
+                    if rms >= SAME_DIFF_RMS_MAX:
+                        return False
+        
+        return True
+
     def check_all_pairs(self, pairs, predicate, debug=False):
         # return True only if every pair satisfies
         for pair in pairs:
@@ -184,7 +200,7 @@ class LocalPatternChecker:
         self.problem = ProblemImages
 
     def check_preset(self):
-        return self.check_all_identical() + self.check_directional_transition()
+        return self.check_all_identical() + self.check_directional_transition() + self.check_image_diff_similarity()
 
     def check_all_identical(self):
         pairs = LocalPatternChecker.ALL_IDENTICAL_PAIRS[self.problem.type]
@@ -213,6 +229,19 @@ class LocalPatternChecker:
                     score = 1 / (result + 1)
                     log('dir={}, offset={}, pairs={}'.format(dir, offset, pairs), score)
                     score_acct += score
+
+        return score_acct
+
+    def check_image_diff_similarity(self):
+
+        score_acct = np.zeros(len(self.problem.choice_keys))
+
+        for dir in ['row', 'column']:
+            pairs = shift_pair(self.problem.type, dir, 0)
+            result = np.array([self.problem.check_diff_similarity_all_pairs([p.replace('?', c) for p in pairs]) for c in self.problem.choice_keys])
+            score = np.array([1 if b else 0 for b in result])
+            log('dir={}, pairs={}'.format(dir, pairs), score)
+            score_acct += score
 
         return score_acct
 
@@ -327,32 +356,6 @@ class Agent:
         log('================= choice: {}'.format(choice.name))
 
         if has_visual:
-            # See if every figure in matric pixel-equals to the choice
-            ret = Agent.all_identical(matrix, choice)
-            if ret > 0:
-                log('all_identical', ret)
-            sum += ret * 10
-
-            ret = Agent.transpose_left_to_right(dimension, matrix, choice)
-            if ret > 0:
-                log('transpose_left_to_right', ret)
-            sum += ret * 5
-
-            ret = Agent.transpose_top_to_bottom(dimension, matrix, choice)
-            if ret > 0:
-                log('transpose_top_to_bottom', ret)
-            sum += ret * 5
-
-            ret = Agent.same_diff_vertically(dimension, matrix, choice)
-            if ret > 0:
-                log('same_diff_vertically', ret)
-            sum += ret * 3
-
-            ret = Agent.same_diff_horizontally(dimension, matrix, choice)
-            if ret > 0:
-                log('same_diff_horizontally', ret)
-            sum += ret * 3
-
             ret = Agent.same_incremental_diff_vertically(dimension, matrix, choice)
             if ret > 0:
                 log('same_incremental_diff_vertically', ret)
@@ -364,259 +367,6 @@ class Agent:
             sum += ret
 
         return sum
-
-    @staticmethod
-    def all_identical(matrix, choice):
-
-        def pixel_equal(a, b):
-            image0 = Image.open(a.visualFilename)
-            image1 = Image.open(b.visualFilename)
-            return image0 == image1
-
-        for k in matrix.keys():
-            if not pixel_equal(choice, matrix[k]):
-                return False
-
-        return True
-
-    @staticmethod
-    def flip_horizontally(dimension, matrix, choice):
-        compare_pairs_map = {
-            # A B
-            # C *
-            '2x2': [
-                ['C', '*'],
-                ['A', 'B']
-            ],
-            '3x3': ['G*', 'AC', 'DF', 'BB', 'EE', 'HH']
-        }
-
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-
-        for pair in compare_pairs_map[dimension]:
-            image0 = get_image(pair[0])
-            image1 = get_image(pair[1])
-            # print("flip_hor({})".format(pair), rms_diff(image0.transpose(Image.FLIP_LEFT_RIGHT), image1))
-            if not is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT), image1):
-                return 0
-
-        return 1
-
-    @staticmethod
-    def flip_vertically(dimension, matrix, choice):
-        compare_pairs_map = {
-            # A B
-            # C *
-            '2x2': [
-                ['B', '*'],
-                ['A', 'C']
-            ],
-            # A B C
-            # D E F
-            # G H *
-            '3x3': [
-                ['C', '*'],
-                ['A', 'G'],
-                ['B', 'H'],
-                ['D', 'D'],
-                ['E', 'E'],
-                ['F', 'F']
-            ]
-        }
-
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-
-        for pair in compare_pairs_map[dimension]:
-            image0 = get_image(pair[0])
-            image1 = get_image(pair[1])
-            if not is_same_image(image0.transpose(Image.FLIP_TOP_BOTTOM), image1):
-                return 0
-
-        return 1
-
-    @staticmethod
-    def flip_diagnoally_top_left_to_bottom_right(dimension, matrix, choice):
-        compare_pairs_map = {
-            # A B
-            # C *
-            '2x2': [ '**', 'AA', 'BC' ],
-            # A B C
-            # D E F
-            # G H *
-            '3x3': [ '**', 'AA', 'BD', 'CG', 'FH', 'EE']
-        }
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-
-        for pair in compare_pairs_map[dimension]:
-            image0 = get_image(pair[0])
-            image1 = get_image(pair[1])
-            if not is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_270), image1):
-                return 0
-
-        return 1
-
-    @staticmethod
-    def flip_diagnoally_top_right_to_bottom_left(dimension, matrix, choice):
-        compare_pairs_map = {
-            # A B
-            # C *
-            '2x2': [ '*A', 'BB', 'CC' ],
-            # A B C
-            # D E F
-            # G H *
-            '3x3': [ '*A', 'BF', 'CC', 'DH', 'EE', 'GG']
-        }
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-        for pair in compare_pairs_map[dimension]:
-            image0 = get_image(pair[0])
-            image1 = get_image(pair[1])
-            # print(pair, rms_diff(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90), image1))
-            if not is_same_image(image0.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90), image1):
-                return 0
-
-        return 1
-
-    @staticmethod
-    def transpose_left_to_right(dimension, matrix, choice):
-        compare_pairs_map = {
-            # A B
-            # C *
-            '2x2': [ 'C*', 'AB' ],
-            # A B C
-            # D E F
-            # G H *
-            '3x3': [ 'H*', 'AB', 'BC', 'DE', 'EF', 'GH']
-        }
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-        
-        def compare_all(option):
-            for pair in compare_pairs_map[dimension]:
-                image0 = get_image(pair[0])
-                image1 = get_image(pair[1])
-                if option is None:
-                    if not is_same_image(image0, image1):
-                        return 0
-                else:
-                    if not is_same_image(image0.transpose(option), image1):
-                        return 0
-            return 1
-
-        sum = 0
-        for option in [Image.ROTATE_90, Image.ROTATE_180, Image.ROTATE_270, None]:
-            if compare_all(option):
-                sum += 1
-
-        return sum
-
-    @staticmethod
-    def transpose_top_to_bottom(dimension, matrix, choice):
-        compare_pairs_map = {
-            # A B
-            # C *
-            '2x2': [ 'B*', 'AC' ],
-            # A B C
-            # D E F
-            # G H *
-            '3x3': [ 'F*', 'AD', 'BE', 'CF', 'DG', 'EH']
-        }
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-        
-        def compare_all(option):
-            for pair in compare_pairs_map[dimension]:
-                image0 = get_image(pair[0])
-                image1 = get_image(pair[1])
-                # print('compare ', pair)
-                if option is None:
-                    if not is_same_image(image0, image1):
-                        return 0
-                else:
-                    if not is_same_image(image0.transpose(option), image1):
-                        return 0
-
-            return 1
-
-        sum = 0
-        for option in [Image.ROTATE_90, Image.ROTATE_180, Image.ROTATE_270, None]:
-            if compare_all(option):
-                sum += 1
-
-        return sum
-
-    # For questions like Basic Problem B-10
-    @staticmethod
-    def same_diff_vertically(dimension, matrix, choice):
-        if dimension == '3x3':
-            return 0
-
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-
-        # diff1 = ImageChops.difference(get_image('A'), get_image('C'))
-        # diff2 = ImageChops.difference(get_image('B'), get_image('*'))
-
-        diff1 = ImageChops.subtract(get_image('A'), get_image('C'), 2.0, 128)
-        diff2 = ImageChops.subtract(get_image('B'), get_image('*'), 2.0, 128)
-
-        if diff1 == diff2:
-            return 1
-        rms = rms_histogram(diff1, diff2)
-        # print('horizontal', rms, choice.name)
-        if rms < SAME_DIFF_RMS_MAX:
-            return 1
-        return 0
-
-    @staticmethod
-    def same_diff_horizontally(dimension, matrix, choice):
-        if dimension == '3x3':
-            return 0
-
-        def get_image(name):
-            if name == '*':
-                return Image.open(choice.visualFilename)
-            else:
-                return Image.open(matrix.get(name).visualFilename)
-        # diff1 = ImageChops.difference(get_image('A'), get_image('C'))
-        # diff2 = ImageChops.difference(get_image('B'), get_image('*'))
-
-        diff1 = ImageChops.subtract(get_image('A'), get_image('B'), 2.0, 128)
-        diff2 = ImageChops.subtract(get_image('C'), get_image('*'), 2.0, 128)
-        if diff1 == diff2:
-            return 1
-
-        rms = rms_histogram(diff1, diff2)
-        # print('verti', rms, choice.name)
-        # print(diff1.histogram())
-        # print(diff2.histogram())
-        if rms < SAME_DIFF_RMS_MAX:
-            return 1
-        return 0
 
     @staticmethod
     def same_incremental_diff_vertically(dimension, matrix, choice):
