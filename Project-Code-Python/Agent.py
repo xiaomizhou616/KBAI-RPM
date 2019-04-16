@@ -141,6 +141,21 @@ class ProblemImages:
         
         return True
 
+    def check_incremental_diff_directional(self, lines):
+
+        diff_in_line = []
+        for line in lines:
+            diffs = []
+            for (i, pair) in enumerate(line):
+                image0 = self.images[pair[0]]
+                image1 = self.images[pair[1]]
+                diffs.append(ImageChops.subtract(image0, image1, 2.0, 128))
+            diff_in_line.append(diffs)
+
+        rms_in_line = [rms_histogram(line[0], line[1]) for line in diff_in_line]
+
+        return np.std(np.array(rms_in_line)) < SAME_INCREMENTAL_DIFF_STD
+
     def check_all_pairs(self, pairs, predicate, debug=False):
         # return True only if every pair satisfies
         for pair in pairs:
@@ -200,7 +215,7 @@ class LocalPatternChecker:
         self.problem = ProblemImages
 
     def check_preset(self):
-        return self.check_all_identical() + self.check_directional_transition() + self.check_image_diff_similarity()
+        return self.check_all_identical() + self.check_directional_transition() + self.check_image_diff_similarity() + self.check_image_incremental_diff_similarity()
 
     def check_all_identical(self):
         pairs = LocalPatternChecker.ALL_IDENTICAL_PAIRS[self.problem.type]
@@ -241,6 +256,24 @@ class LocalPatternChecker:
             result = np.array([self.problem.check_diff_similarity_all_pairs([p.replace('?', c) for p in pairs]) for c in self.problem.choice_keys])
             score = np.array([1 if b else 0 for b in result])
             log('dir={}, pairs={}'.format(dir, pairs), score)
+            score_acct += score
+
+        return score_acct
+
+    def check_image_incremental_diff_similarity(self):
+
+        score_acct = np.zeros(len(self.problem.choice_keys))
+
+        if self.problem.type == '2x2':
+            return score_acct
+
+        for dir in ['row', 'column']:
+            pairs = shift_pair(self.problem.type, dir, 0)
+            pairs_in_line = [[pairs[i], pairs[i+1]] for i in [0, 2, 4]]
+            result = np.array([self.problem.check_incremental_diff_directional([[p.replace('?', c) for p in line] for line in pairs_in_line]) for c in self.problem.choice_keys])
+            score = np.array([1 if b else 0 for b in result])
+            log('dir={}, pairs={}'.format(dir, pairs), score)
+
             score_acct += score
 
         return score_acct
