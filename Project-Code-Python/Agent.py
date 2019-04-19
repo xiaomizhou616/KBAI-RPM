@@ -339,6 +339,35 @@ def shift_matrix(dir, mtx, offset):
             lines.append(line)
     return lines
 
+def transpose_matrix(dir, mtx, rotate):
+    n_row = len(mtx)
+    n_col = len(mtx[0])
+    lines = []
+
+    if rotate == None:
+        return mtx
+
+    if dir == 'h':
+        for i in range(0, n_row):
+            line = []
+            for j in range(0, n_col):
+                original = mtx[i][j]
+                for k in range(0, i):
+                    original = original.transpose(rotate)
+                line.append(original)
+            lines.append(line)
+    elif dir == 'v':
+        for i in range(0, n_row):
+            line = []
+            for j in range(0, n_col):
+                original = mtx[i][j]
+                for k in range(0, j):
+                    original = original.transpose(rotate)
+                line.append(original)
+            lines.append(line)
+    
+    return lines
+
 class LocalPatternChecker:
 
     IMAGE_TRANSITIONS = [
@@ -470,13 +499,19 @@ class LocalPatternChecker:
             return sum
         
         max_offset = len(matrix)
-        shift_sum = 0
+        transpose_sum = 0
         for dir in ['v', 'h']:
             for offset in range(0, max_offset):
-                m = shift_matrix(dir, matrix, offset)
-                shift_sum += dfs('{}(shift({}))'.format(dir, offset), dict(data=m, type='image'))
+                shifted_m = shift_matrix(dir, matrix, offset)
+                if self.problem.type == '2x2':
+                    for rotate_dir in ['v', 'h']:
+                        for rotate in [None, Image.ROTATE_90, Image.ROTATE_180, Image.ROTATE_270]:
+                            m = transpose_matrix(rotate_dir, shifted_m, rotate)
+                            transpose_sum += dfs('{}(shift({})) {}(rotate({}))'.format(dir, offset, rotate_dir, rotate), dict(data=m, type='image'))
+                else:
+                    transpose_sum += dfs('{}(shift({}))'.format(dir, offset), dict(data=shifted_m, type='image'))
 
-        return shift_sum, result_paths
+        return transpose_sum, result_paths
         # return dfs('', dict(data=matrix, type='image')), result_paths
 
     # def check_directional_transition(self):
