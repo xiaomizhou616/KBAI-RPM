@@ -4,9 +4,6 @@ import math
 # Install Pillow and uncomment this line to access image processing.
 from PIL import Image, ImageChops
 import numpy as np
-# import matplotlib.pyplot as plt
-
-# np.set_printoptions(linewidth=200)
 
 # Select a specific question to evaluate, will be evaluated as name.startswith(PROBLEM_STARTS_WITH)
 # - '' (empty string) means all
@@ -17,6 +14,11 @@ PROBLEM_STARTS_WITH = ''
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
 SAME_INCREMENTAL_DIFF_STD = 0.0002
+
+def remove_alpha(image):
+    rgb = Image.new("RGB", image.size, (255, 255, 255))
+    rgb.paste(image, mask=image.split()[3])
+    return rgb
 
 def two_means(data):
     # return two clusters
@@ -47,23 +49,91 @@ def rms_histogram(image1, image2):
     errors = h1 - h2
     return math.sqrt(np.mean(np.square(errors)))
 
+
+# vector
+def pixel_diff(image0, image1):
+    """pixel diff represented as a image"""
+    img = ImageChops.subtract(image0, image1, 2.0, 128)
+    return img
+
+# scalar
+def darkness_diff(image0, image1):
+    """The difference of the degree of darkness"""
+    darkness = lambda img: sum([i * val for i, val in enumerate(img.histogram())])
+    return darkness(image0) - darkness(image1)
+
 def rms_diff(image1, image2):
     errors = np.asarray(ImageChops.difference(image1, image2)) / 255
-    return math.sqrt(np.mean(np.square(errors)))
-    # h = ImageChops.difference(image1, image2).histogram()
-    # sum = np.array([value * ((i % 256) ** 2) for i, value in enumerate(h)]).sum()
-    # return np.sqrt(sum / float(image1.size[0] * image1.size[1]))
+    return np.sqrt(np.mean(np.square(errors)))
 
 def is_same_image(image1, image2):
     rms = rms_diff(image1, image2)
     # log('is_same_image', rms)
     return rms <= SAME_IMAGE_MAX_RMS
 
+def is_image_close(image1, image2):
+    rms = rms_diff(image1, image2)
+    # print(rms)
+    return (rms <= 0.1) + 0
+    
 # log function, will not print message if env var XH_DEBUG is not set
 def log(*args):
     flag = (os.getenv('XH_DEBUG', "").lower() in ['1', 'true', 'on'])
     if flag:
         print(*args)
+
+class ImageOperation:
+    RMS_EQUAL_MAX = 0.15
+
+    def __init__(self, problem_images):
+        
+        self.rms_equal_threshold = self.get_local_rms()
+        pass
+
+    def get_local_rms(self):
+        """Get the rms threshould for equality"""
+        #TODO
+        return ImageOperation.RMS_EQUAL_MAX
+
+    def equal(self, image0, image1, rotate=0, universal=True):
+        assert rotate % 90 == 0
+
+        if rotate > 0:
+            opts = [Image.ROTATE_90, Image.ROTATE_180, Image.ROTATE_270]
+            image0 = image0.transpose(opts[rotate/90 - 1])
+        
+        image0 = image0.transpose(Image.ROTATE_90)
+
+        rms = rms_diff(image0, image1)
+        if universal:
+            return rms <= ImageOperation.RMS_EQUAL_MAX
+        else:
+            return rms <= self.rms_equal_threshold
+
+def is_arithemtic_sequence(seq):
+    s = np.asfarray(seq)
+    d = np.diff(s, n=2)
+    return np.allclose(d, np.zeros_like(d))
+
+def is_geometric_sequence(seq):
+    s = np.asfarray(seq)
+    d = np.diff(np.log(s), n=1)
+    return np.allclose(d, np.roll(d, 1))
+
+def is_close(a, b):
+    return np.isclose(a, b)
+    # # order-2 diff
+    # def pixel_diff_diff(self, image0, image1, image2, image3):
+    #     """The diff of image diff"""
+    #     # pair: (image0, image1), (image2, image3)
+    #     d = self.pixel_diff
+    #     return d(d(image0, image1), d(image2, image3))
+
+def diff(a, b):
+    return a - b
+
+def log_diff(a, b):
+    return math.log(a) - math.log(b)
 
 class ProblemImages:
     KEYS = {
@@ -75,9 +145,10 @@ class ProblemImages:
         self.name = name
         self.type = type
         self.images = {}
+
         self.rms_sum = 0
 
-        read_image = lambda k: Image.open(figures.get(k).visualFilename)
+        read_image = lambda k: remove_alpha(Image.open(figures.get(k).visualFilename))
 
         self.keys = keys = ProblemImages.KEYS[self.type]
 
@@ -106,7 +177,7 @@ class ProblemImages:
         self.image_equal_threshold = SAME_IMAGE_MAX_RMS
         log(self.image_equal_threshold)
 
-
+        self.image_ops = ImageOperation(self)
 
     def image_equal(self, image0, image1):
         rms = rms_diff(image0, image1)
@@ -114,16 +185,16 @@ class ProblemImages:
         # log('self.image_equal', rms)
         return rms <= self.image_equal_threshold
 
-    def sum_rms_all_pairs(self, pairs, predicate, debug=False):
-        self.rms_sum = 0 # clear
+    # def sum_rms_all_pairs(self, pairs, predicate, debug=False):
+    #     self.rms_sum = 0 # clear
 
-        for pair in pairs:
-            image0 = self.images[pair[0]]
-            image1 = self.images[pair[1]]
-            if not predicate(image0, image1, self.image_equal):
-                return 100000
+    #     for pair in pairs:
+    #         image0 = self.images[pair[0]]
+    #         image1 = self.images[pair[1]]
+    #         if not predicate(image0, image1, self.image_equal):
+    #             return 100000
 
-        return self.rms_sum
+    #     return self.rms_sum
 
     def check_diff_similarity_all_pairs(self, pairs):
         diffs = []
@@ -179,7 +250,6 @@ class ProblemImages:
         log('std', std)
         return  std < 0.2
 
-
     def check_all_pairs(self, pairs, predicate, debug=False):
         # return True only if every pair satisfies
         for pair in pairs:
@@ -194,38 +264,36 @@ class ProblemImages:
 
         return True
 
-def shift_pair(problem_type, direction, offset):
-    matrix = {
-        'row': {
-            '2x2': ['AB', 'C?'],
-            '3x3': ['ABC', 'DEF', 'GH?']
-        },
-        'column': {
-            '2x2': ['AC', 'B?'],
-            '3x3': ['ADG', 'BEH', 'CF?']
+    def generate_pairs(self, direction, offset):
+        matrix = {
+            'row': {
+                '2x2': ['AB', 'C?'],
+                '3x3': ['ABC', 'DEF', 'GH?']
+            },
+            'column': {
+                '2x2': ['AC', 'B?'],
+                '3x3': ['ADG', 'BEH', 'CF?']
+            }
         }
-    }
 
-    m = matrix[direction][problem_type]
-    offset = offset % len(m)
+        m = matrix[direction][self.type]
+        offset = offset % len(m)
 
-    for row in range(1, len(m)):
-        shift = (offset * row) % len(m)
-        m[row] = m[row][shift:] + m[row][:shift]
+        for row in range(1, len(m)):
+            shift = (offset * row) % len(m)
+            m[row] = m[row][shift:] + m[row][:shift]
 
-    pairs = []
-    for row in range(1, len(m)):
-        for col in range(0, len(m)):
-            pairs.append(m[row-1][col] + m[row][col])
+        lines = []
+        for row in range(1, len(m)):
+            line = []
+            for col in range(0, len(m)):
+                line.append(m[row-1][col] + m[row][col])
+            lines.append(line)
 
-    return pairs
+        return lines
 
 class LocalPatternChecker:
-    ALL_IDENTICAL_PAIRS = {
-        '2x2': ['AB', 'BC', 'C?'],
-        '3x3': ['AB', 'BC', 'CD', 'DE', 'EF', 'FG', 'GH', 'H?']
-    }
-    
+
     IMAGE_TRANSITIONS = [
         # lambda image0, image1: image0 == image1,
         lambda image0, image1, equal=is_same_image: equal(image0, image1),
@@ -239,69 +307,171 @@ class LocalPatternChecker:
         self.problem = ProblemImages
 
     def check_preset(self):
-        return self.check_all_identical() + self.check_directional_transition() + self.check_image_diff_similarity() + self.check_image_incremental_diff_similarity()
+        return self.search()
+        # return self.check_all_identical() + self.check_directional_transition() + self.check_image_diff_similarity() + self.check_image_incremental_diff_similarity()
 
-    def check_all_identical(self):
-        pairs = LocalPatternChecker.ALL_IDENTICAL_PAIRS[self.problem.type]
-        pred = LocalPatternChecker.IMAGE_TRANSITIONS[0]
+    # def check_all_identical(self):
+    #     pairs = LocalPatternChecker.ALL_IDENTICAL_PAIRS[self.problem.type]
+    #     pred = LocalPatternChecker.IMAGE_TRANSITIONS[0]
 
-        result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
-        score = np.array([1 if b else 0 for b in result])
-        return score
+    #     result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
+    #     score = np.array([1 if b else 0 for b in result])
+    #     return score
 
-    def check_directional_transition(self):
-        max_shift = {
-            '2x2': 2,
-            '3x3': 3
+    def search(self):
+        m_data = {
+            '2x2': ['AB', 'C?'],
+            '3x3': ['ABC', 'DEF', 'GH?']
         }
 
-        score_acct = np.zeros(len(self.problem.choice_keys))
-        for pred in LocalPatternChecker.IMAGE_TRANSITIONS:
-            log('======= pred =======')
-            for dir in ['row', 'column']:
-                for offset in range(0, max_shift[self.problem.type]):
-                    pairs = shift_pair(self.problem.type, dir, offset)
-                    # debug = 'AE' in pairs and 'E?' in pairs
-                    # result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred, debug) for c in self.problem.choice_keys]
-                    # score = np.array([1 if b else 0 for b in result])
-                    result = np.array([self.problem.sum_rms_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys])
-                    score = 1 / (result + 1)
-                    log('dir={}, offset={}, pairs={}'.format(dir, offset, pairs), score)
-                    score_acct += score
+        m = m_data[self.problem.type]
+        result = []
+        for c in self.problem.choice_keys:
+            matrix = [[self.problem.images[k.replace('?', c)] for k in row] for row in m]
+            log('-------- start choice {}'.format(c))
+            r, paths = self.search_matrix(matrix, c)
+            # print(c, r)
+            log('======== result of choice: {}'.format(c) + '\n' + '\n'.join(paths) + '\n')
+            result.append(r)
 
-        return score_acct
+        return np.asarray(result)
 
-    def check_image_diff_similarity(self):
+    def search_matrix(self, matrix, choice):
+        result_paths = []
 
-        score_acct = np.zeros(len(self.problem.choice_keys))
 
-        for dir in ['row', 'column']:
-            pairs = shift_pair(self.problem.type, dir, 0)
-            result = np.array([self.problem.check_diff_similarity_all_pairs([p.replace('?', c) for p in pairs]) for c in self.problem.choice_keys])
-            score = np.array([1 if b else 0 for b in result])
-            log('dir={}, pairs={}'.format(dir, pairs), score)
-            score_acct += score
 
-        return score_acct
+        def compress(dir, mtx, func, n_arg):
+            try:
+                return compress_execution(dir, mtx, func, n_arg)
+            except ValueError as e:
+                log(e)
+                return None, False
 
-    def check_image_incremental_diff_similarity(self):
+        def compress_execution(dir, mtx, func, n_arg):
+            n_row = len(mtx)
+            n_col = len(mtx[0])
 
-        score_acct = np.zeros(len(self.problem.choice_keys))
+            if n_arg == 3:
+                if n_row == 3 and dir == 'v':
+                    m = [[func([mtx[i][j] for i in [0, 1, 2]]) for j in range(0, n_col)]]
+                    return m, True
+                elif n_col == 3 and dir == 'h':
+                    m = [[func(mtx[i])] for i in range(0, n_row)]
+                    return m, True
 
-        if self.problem.type == '2x2':
-            return score_acct
+                return None, False
 
-        for check in [self.problem.check_incremental_diff_directional, self.problem.check_incremental_coverage_diff_directional]:
-            for dir in ['row', 'column']:
-                pairs = shift_pair(self.problem.type, dir, 0)
-                pairs_in_line = [[pairs[i], pairs[i+3]] for i in [0, 1, 2]]
-                result = np.array([check([[p.replace('?', c) for p in line] for line in pairs_in_line]) for c in self.problem.choice_keys])
-                score = np.array([1 if b else 0 for b in result])
-                log('dir={}, pairs={}'.format(dir, pairs), score)
+            if dir == 'h':
+                if n_col < 2:
+                    return None, False
+                else:
+                    m = [[None] * (n_col - 1)] * n_row
+                    for i in range(0, n_row):
+                        for j in range(0, n_col - 1):
+                            m[i][j] = func(mtx[i][j], mtx[i][j+1])
+                    return m, True
+            elif dir == 'v':
+                if n_row < 2:
+                    return None, False
+                else:
+                    m = [[None] * n_col] * (n_row - 1)
+                    for i in range(0, n_row - 1):
+                        for j in range(0, n_col):
+                            m[i][j] = func(mtx[i][j], mtx[i+1][j])
+                    return m, True
 
-                score_acct += score
+        def dfs(path, mat):
+            mtx = mat['data']
+            data_type = mat['type']
 
-        return score_acct
+            log('{}: {}'.format(path, mtx))
+            
+            if data_type == 'boolean':
+                return np.all(np.asarray(mtx))
+
+            if len(mtx) == 1 and len(mtx[0]) == 1 and data_type == 'number':
+                result_paths.append(path)
+                return mtx[0][0]
+
+            sum = 0
+
+
+            for dir in ['h', 'v']:
+                def compress_by_type(funcs, n_arg, return_type):
+                    result = 0
+                    for f in funcs:
+                        m, yes = compress(dir, mtx, f, n_arg)
+                        if yes:
+                            result += dfs(path + ' {}({})'.format(dir, f.__name__), dict(data=m, type=return_type))
+                    return result
+
+                if data_type == 'image':
+                    compress_by_type([pixel_diff], 2, 'image')
+                    compress_by_type([rms_diff, darkness_diff], 2, 'number')
+                    compress_by_type([is_image_close], 2, 'boolean')
+                elif data_type == 'number':
+                    compress_by_type([diff, log_diff], 2, 'number')
+                    compress_by_type([is_close], 2, 'boolean')
+                    compress_by_type([is_arithemtic_sequence, is_geometric_sequence], 3, 'number')
+
+            return sum
+        
+        return dfs('', dict(data=matrix, type='image')), result_paths
+
+    # def check_directional_transition(self):
+    #     max_shift = {
+    #         '2x2': 2,
+    #         '3x3': 3
+    #     }
+
+    #     score_acct = np.zeros(len(self.problem.choice_keys))
+    #     for pred in LocalPatternChecker.IMAGE_TRANSITIONS:
+    #         log('======= pred =======')
+    #         for dir in ['row', 'column']:
+    #             for offset in range(0, max_shift[self.problem.type]):
+    #                 pairs = shift_pair(self.problem.type, dir, offset)
+    #                 # debug = 'AE' in pairs and 'E?' in pairs
+    #                 # result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred, debug) for c in self.problem.choice_keys]
+    #                 # score = np.array([1 if b else 0 for b in result])
+    #                 result = np.array([self.problem.sum_rms_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys])
+    #                 score = 1 / (result + 1)
+    #                 log('dir={}, offset={}, pairs={}'.format(dir, offset, pairs), score)
+    #                 score_acct += score
+
+    #     return score_acct
+
+    # def check_image_diff_similarity(self):
+
+    #     score_acct = np.zeros(len(self.problem.choice_keys))
+
+    #     for dir in ['row', 'column']:
+    #         pairs = shift_pair(self.problem.type, dir, 0)
+    #         result = np.array([self.problem.check_diff_similarity_all_pairs([p.replace('?', c) for p in pairs]) for c in self.problem.choice_keys])
+    #         score = np.array([1 if b else 0 for b in result])
+    #         log('dir={}, pairs={}'.format(dir, pairs), score)
+    #         score_acct += score
+
+    #     return score_acct
+
+    # def check_image_incremental_diff_similarity(self):
+
+    #     score_acct = np.zeros(len(self.problem.choice_keys))
+
+    #     if self.problem.type == '2x2':
+    #         return score_acct
+
+    #     for check in [self.problem.check_incremental_diff_directional, self.problem.check_incremental_coverage_diff_directional]:
+    #         for dir in ['row', 'column']:
+    #             pairs = shift_pair(self.problem.type, dir, 0)
+    #             pairs_in_line = [[pairs[i], pairs[i+3]] for i in [0, 1, 2]]
+    #             result = np.array([check([[p.replace('?', c) for p in line] for line in pairs_in_line]) for c in self.problem.choice_keys])
+    #             score = np.array([1 if b else 0 for b in result])
+    #             log('dir={}, pairs={}'.format(dir, pairs), score)
+
+    #             score_acct += score
+
+    #     return score_acct
 
 class GlobalPatternChecker:
     # Check if the entire matrix, viewed as one picture, has certain pattern
@@ -350,7 +520,7 @@ class GlobalPatternChecker:
         for (pairs, pred) in zip(pair_arry, preds):
             result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
             score = np.array([1 if b else 0 for b in result])
-            log(score)
+            # log(score)
             score_acc += score
 
         return score_acc
@@ -396,7 +566,8 @@ class Agent:
         local_scores = l.check_preset()
         log('local_score', local_scores)
 
-        sum = np.array(global_scores) + np.array(local_scores)
+        sum = np.array(global_scores) * 1000 + np.array(local_scores)
+        log('total_score', sum)
 
         top = np.amax(sum)
         if top == 0:
