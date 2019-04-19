@@ -150,12 +150,6 @@ def is_geometric_sequence(seq):
 
 def is_close(a, b):
     return np.isclose(a, b)
-    # # order-2 diff
-    # def pixel_diff_diff(self, image0, image1, image2, image3):
-    #     """The diff of image diff"""
-    #     # pair: (image0, image1), (image2, image3)
-    #     d = self.pixel_diff
-    #     return d(d(image0, image1), d(image2, image3))
 
 def diff(a, b):
     return a - b
@@ -212,17 +206,6 @@ class ProblemImages:
         self.rms_sum += rms
         # log('self.image_equal', rms)
         return rms <= self.image_equal_threshold
-
-    # def sum_rms_all_pairs(self, pairs, predicate, debug=False):
-    #     self.rms_sum = 0 # clear
-
-    #     for pair in pairs:
-    #         image0 = self.images[pair[0]]
-    #         image1 = self.images[pair[1]]
-    #         if not predicate(image0, image1, self.image_equal):
-    #             return 100000
-
-    #     return self.rms_sum
 
     def check_diff_similarity_all_pairs(self, pairs):
         diffs = []
@@ -384,15 +367,6 @@ class LocalPatternChecker:
 
     def check_preset(self):
         return self.search()
-        # return self.check_all_identical() + self.check_directional_transition() + self.check_image_diff_similarity() + self.check_image_incremental_diff_similarity()
-
-    # def check_all_identical(self):
-    #     pairs = LocalPatternChecker.ALL_IDENTICAL_PAIRS[self.problem.type]
-    #     pred = LocalPatternChecker.IMAGE_TRANSITIONS[0]
-
-    #     result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
-    #     score = np.array([1 if b else 0 for b in result])
-    #     return score
 
     def search(self):
         m_data = {
@@ -512,61 +486,6 @@ class LocalPatternChecker:
                     transpose_sum += dfs('{}(shift({}))'.format(dir, offset), dict(data=shifted_m, type='image'))
 
         return transpose_sum, result_paths
-        # return dfs('', dict(data=matrix, type='image')), result_paths
-
-    # def check_directional_transition(self):
-    #     max_shift = {
-    #         '2x2': 2,
-    #         '3x3': 3
-    #     }
-
-    #     score_acct = np.zeros(len(self.problem.choice_keys))
-    #     for pred in LocalPatternChecker.IMAGE_TRANSITIONS:
-    #         log('======= pred =======')
-    #         for dir in ['row', 'column']:
-    #             for offset in range(0, max_shift[self.problem.type]):
-    #                 pairs = shift_pair(self.problem.type, dir, offset)
-    #                 # debug = 'AE' in pairs and 'E?' in pairs
-    #                 # result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred, debug) for c in self.problem.choice_keys]
-    #                 # score = np.array([1 if b else 0 for b in result])
-    #                 result = np.array([self.problem.sum_rms_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys])
-    #                 score = 1 / (result + 1)
-    #                 log('dir={}, offset={}, pairs={}'.format(dir, offset, pairs), score)
-    #                 score_acct += score
-
-    #     return score_acct
-
-    # def check_image_diff_similarity(self):
-
-    #     score_acct = np.zeros(len(self.problem.choice_keys))
-
-    #     for dir in ['row', 'column']:
-    #         pairs = shift_pair(self.problem.type, dir, 0)
-    #         result = np.array([self.problem.check_diff_similarity_all_pairs([p.replace('?', c) for p in pairs]) for c in self.problem.choice_keys])
-    #         score = np.array([1 if b else 0 for b in result])
-    #         log('dir={}, pairs={}'.format(dir, pairs), score)
-    #         score_acct += score
-
-    #     return score_acct
-
-    # def check_image_incremental_diff_similarity(self):
-
-    #     score_acct = np.zeros(len(self.problem.choice_keys))
-
-    #     if self.problem.type == '2x2':
-    #         return score_acct
-
-    #     for check in [self.problem.check_incremental_diff_directional, self.problem.check_incremental_coverage_diff_directional]:
-    #         for dir in ['row', 'column']:
-    #             pairs = shift_pair(self.problem.type, dir, 0)
-    #             pairs_in_line = [[pairs[i], pairs[i+3]] for i in [0, 1, 2]]
-    #             result = np.array([check([[p.replace('?', c) for p in line] for line in pairs_in_line]) for c in self.problem.choice_keys])
-    #             score = np.array([1 if b else 0 for b in result])
-    #             log('dir={}, pairs={}'.format(dir, pairs), score)
-
-    #             score_acct += score
-
-    #     return score_acct
 
 class GlobalPatternChecker:
     # Check if the entire matrix, viewed as one picture, has certain pattern
