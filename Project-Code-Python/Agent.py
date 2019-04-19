@@ -63,7 +63,9 @@ def pixel_diff(image0, image1):
 def darkness_diff(image0, image1):
     """The difference of the degree of darkness"""
     darkness = lambda img: sum([i * val for i, val in enumerate(img.histogram())])
-    return darkness(image0) - darkness(image1)
+    d = darkness(image0) - darkness(image1)
+    log('darkness_diff = {}'.format(d))
+    return d
 
 def rms_diff(image1, image2):
     errors = np.asarray(ImageChops.difference(image1, image2)) / 255.0
@@ -93,7 +95,7 @@ def log_image(img0, img1):
         log('{}   {}'.format(p0[i], p1[i]))
 
 def is_image_close(image1, image2):
-    log_image(image1, image2)
+    # log_image(image1, image2)
     # log('image1')
     # log('\n'.join(image2ascii(image1)))
     # log('image2')
@@ -318,6 +320,25 @@ class ProblemImages:
 
         return lines
 
+def shift_matrix(dir, mtx, offset):
+    n_row = len(mtx)
+    n_col = len(mtx[0])
+
+    lines = []
+    if dir == 'h':
+        for i in range(0, n_row):
+            line = []
+            for j in range(0, n_col):
+                line.append(mtx[i][(j + i * offset) % n_col])
+            lines.append(line)
+    elif dir == 'v':
+        for i in range(0, n_row):
+            line = []
+            for j in range(0, n_col):
+                line.append(mtx[(i + j * offset) % n_row][j])
+            lines.append(line)
+    return lines
+
 class LocalPatternChecker:
 
     IMAGE_TRANSITIONS = [
@@ -383,19 +404,23 @@ class LocalPatternChecker:
                 if n_col < 2:
                     return None, False
                 else:
-                    m = [[None] * (n_col - 1)] * n_row
+                    m = []
                     for i in range(0, n_row):
+                        m_line = []
                         for j in range(0, n_col - 1):
-                            m[i][j] = func(mtx[i][j], mtx[i][j+1])
+                            m_line.append(func(mtx[i][j], mtx[i][j+1]))
+                        m.append(m_line)
                     return m, True
             elif dir == 'v':
                 if n_row < 2:
                     return None, False
                 else:
-                    m = [[None] * n_col] * (n_row - 1)
+                    m = []
                     for i in range(0, n_row - 1):
+                        m_line = []
                         for j in range(0, n_col):
-                            m[i][j] = func(mtx[i][j], mtx[i+1][j])
+                            m_line.append(func(mtx[i][j], mtx[i+1][j]))
+                        m.append(m_line)
                     return m, True
 
         def dfs(path, mat):
@@ -404,9 +429,12 @@ class LocalPatternChecker:
 
             log('{}: {}'.format(path, mtx))
             
-            if data_type == 'boolean' and np.all(np.asarray(mtx)):
-                result_paths.append(path)
-                return 1
+            if data_type == 'boolean':
+                if np.all(np.asarray(mtx)):
+                    result_paths.append(path)
+                    return 1
+
+                return 0
 
             # if len(mtx) == 1 and len(mtx[0]) == 1 and data_type == 'number':
             #     val = mtx[0][0]
@@ -437,11 +465,19 @@ class LocalPatternChecker:
                 elif data_type == 'number':
                     sum += compress_by_type([diff, log_diff], 2, 'number')
                     sum += compress_by_type([is_close], 2, 'boolean')
-                    sum += compress_by_type([is_arithemtic_sequence, is_geometric_sequence], 3, 'number')
+                    sum += compress_by_type([is_arithemtic_sequence, is_geometric_sequence], 3, 'boolean')
 
             return sum
         
-        return dfs('', dict(data=matrix, type='image')), result_paths
+        max_offset = len(matrix)
+        shift_sum = 0
+        for dir in ['v', 'h']:
+            for offset in range(0, max_offset):
+                m = shift_matrix(dir, matrix, offset)
+                shift_sum += dfs('{}(shift({}))'.format(dir, offset), dict(data=m, type='image'))
+
+        return shift_sum, result_paths
+        # return dfs('', dict(data=matrix, type='image')), result_paths
 
     # def check_directional_transition(self):
     #     max_shift = {

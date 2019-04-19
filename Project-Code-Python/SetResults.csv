@@ -1,5 +1,5 @@
 Set,Correct,Incorrect,Skipped
-Basic Problems B,10,2,0
-Basic Problems C,8,4,0
-Basic Problems D,2,10,0
-Basic Problems E,2,10,0
+Basic Problems B,10,0,2
+Basic Problems C,6,4,2
+Basic Problems D,6,2,4
+Basic Problems E,4,5,3
