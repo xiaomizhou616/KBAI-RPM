@@ -1,15 +1,17 @@
+# ** encoding: utf-8 **
 from __future__ import print_function
 import os
 import math
 # Install Pillow and uncomment this line to access image processing.
 from PIL import Image, ImageChops
 import numpy as np
+# np.set_printoptions(threshold=10000000)
 
 # Select a specific question to evaluate, will be evaluated as name.startswith(PROBLEM_STARTS_WITH)
 # - '' (empty string) means all
 # - 'Basic Problem' means all basic problems
 # - 'Basic Problem B-10' means only basic problem B-10
-PROBLEM_STARTS_WITH = ''
+PROBLEM_STARTS_WITH = 'Basic Problem'
 
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
@@ -53,6 +55,7 @@ def rms_histogram(image1, image2):
 # vector
 def pixel_diff(image0, image1):
     """pixel diff represented as a image"""
+    # img = ImageChops.difference(image0, image1)
     img = ImageChops.subtract(image0, image1, 2.0, 128)
     return img
 
@@ -63,7 +66,8 @@ def darkness_diff(image0, image1):
     return darkness(image0) - darkness(image1)
 
 def rms_diff(image1, image2):
-    errors = np.asarray(ImageChops.difference(image1, image2)) / 255
+    errors = np.asarray(ImageChops.difference(image1, image2)) / 255.0
+    # print(errors)
     return np.sqrt(np.mean(np.square(errors)))
 
 def is_same_image(image1, image2):
@@ -71,10 +75,32 @@ def is_same_image(image1, image2):
     # log('is_same_image', rms)
     return rms <= SAME_IMAGE_MAX_RMS
 
+def image2ascii(img):
+    SC = 0.2
+    WCF = 7/3.0
+    # chars = np.asarray(list(' .,:;irsXA253hMHGS#9B&@'))
+    chars = np.asarray(list(' .:iLFEPB#%'))
+    S = ( int(round(img.size[0]*SC*WCF)), int(round(img.size[1]*SC)) )
+    img = np.sum( np.asarray( img.resize(S) ), axis=2)
+    # img -= img.min()
+    img = (img/(3*255.0))*(chars.size-1)
+    return list("".join(r) for r in chars[img.astype(int)])
+
+def log_image(img0, img1):
+    p0 = image2ascii(img0)
+    p1 = image2ascii(img1)
+    for i in range(0, len(p0)):
+        log('{}   {}'.format(p0[i], p1[i]))
+
 def is_image_close(image1, image2):
+    log_image(image1, image2)
+    # log('image1')
+    # log('\n'.join(image2ascii(image1)))
+    # log('image2')
+    # log_image(image2)
     rms = rms_diff(image1, image2)
-    # print(rms)
-    return (rms <= 0.1) + 0
+    log('rms = {}'.format(rms))
+    return (rms <= 0.1)
     
 # log function, will not print message if env var XH_DEBUG is not set
 def log(*args):
@@ -169,8 +195,8 @@ class ProblemImages:
 
         self.rms_data = np.array(data)
 
-        cluster = two_means(self.rms_data)
-        cluster_range = [(np.min(cluster[i]), np.max(cluster[i])) for i in range(0, 2)]
+        # cluster = two_means(self.rms_data)
+        # cluster_range = [(np.min(cluster[i]), np.max(cluster[i])) for i in range(0, 2)]
         # log(cluster_range)
 
         # self.image_equal_threshold = np.min([SAME_IMAGE_MAX_RMS, np.mean([cluster_range[0][1], cluster_range[1][0]])])
@@ -339,15 +365,6 @@ class LocalPatternChecker:
     def search_matrix(self, matrix, choice):
         result_paths = []
 
-
-
-        def compress(dir, mtx, func, n_arg):
-            try:
-                return compress_execution(dir, mtx, func, n_arg)
-            except ValueError as e:
-                log(e)
-                return None, False
-
         def compress_execution(dir, mtx, func, n_arg):
             n_row = len(mtx)
             n_col = len(mtx[0])
@@ -387,17 +404,24 @@ class LocalPatternChecker:
 
             log('{}: {}'.format(path, mtx))
             
-            if data_type == 'boolean':
-                return np.all(np.asarray(mtx))
-
-            if len(mtx) == 1 and len(mtx[0]) == 1 and data_type == 'number':
+            if data_type == 'boolean' and np.all(np.asarray(mtx)):
                 result_paths.append(path)
-                return mtx[0][0]
+                return 1
+
+            # if len(mtx) == 1 and len(mtx[0]) == 1 and data_type == 'number':
+            #     val = mtx[0][0]
+            #     result_paths.append(path)
+            #     return mtx[0][0]
 
             sum = 0
 
-
             for dir in ['h', 'v']:
+                def compress(dir, mtx, func, n_arg):
+                    try:
+                        return compress_execution(dir, mtx, func, n_arg)
+                    except ValueError as e:
+                        log(path + ' {}({})'.format(dir, func.__name__), e)
+                        return None, False
                 def compress_by_type(funcs, n_arg, return_type):
                     result = 0
                     for f in funcs:
@@ -407,13 +431,13 @@ class LocalPatternChecker:
                     return result
 
                 if data_type == 'image':
-                    compress_by_type([pixel_diff], 2, 'image')
-                    compress_by_type([rms_diff, darkness_diff], 2, 'number')
-                    compress_by_type([is_image_close], 2, 'boolean')
+                    sum += compress_by_type([pixel_diff], 2, 'image')
+                    sum += compress_by_type([rms_diff, darkness_diff], 2, 'number')
+                    sum += compress_by_type([is_image_close], 2, 'boolean')
                 elif data_type == 'number':
-                    compress_by_type([diff, log_diff], 2, 'number')
-                    compress_by_type([is_close], 2, 'boolean')
-                    compress_by_type([is_arithemtic_sequence, is_geometric_sequence], 3, 'number')
+                    sum += compress_by_type([diff, log_diff], 2, 'number')
+                    sum += compress_by_type([is_close], 2, 'boolean')
+                    sum += compress_by_type([is_arithemtic_sequence, is_geometric_sequence], 3, 'number')
 
             return sum
         
