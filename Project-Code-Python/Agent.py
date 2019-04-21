@@ -25,7 +25,7 @@ def memoize(function):
 # - '' (empty string) means all
 # - 'Basic Problem' means all basic problems
 # - 'Basic Problem B-10' means only basic problem B-10
-PROBLEM_STARTS_WITH = 'Basic Problem C'
+PROBLEM_STARTS_WITH = 'Basic Problem'
 
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
@@ -284,6 +284,11 @@ def generate_logic_funcs():
 
     funcs.append(new_func)
 
+    # new_func = lambda args: np.all([is_image_close(image_and(args[i % 3], args[(i+1) % 3]), image_and(args[(i+1) % 3], args[(i+2)%3])) for i in [0, 1, 2]])
+    # new_func.__name__ = 'a_and_b=b_and_c'
+
+    # funcs.append(new_func)
+
     return funcs
 
 LOGIC_FUNCS = generate_logic_funcs()
@@ -518,7 +523,8 @@ class LocalPatternChecker:
             filename = 'logs/{}-choice-{}.txt'.format(self.problem.name, c).replace(' ', '-')
             log('logfile name', filename)
             open_logfile(filename)
-            r, paths = self.search_matrix(matrix, c)
+            r, paths = self.search_matrix(matrix)
+            r += self.row_column_product(matrix) * 10
             close_logfile()
             # recover logger
             # print(c, r)
@@ -527,7 +533,30 @@ class LocalPatternChecker:
 
         return np.asarray(result)
 
-    def search_matrix(self, matrix, choice):
+    def row_column_product(self, matrix):
+        if self.problem.type == '2x2':
+            return 0
+
+        row_pattern = [image_and(image_and(matrix[i][0], matrix[i][1]).convert('L'), matrix[i][2]).convert('L') for i in [0, 1, 2]]
+        col_pattern = [image_and(image_and(matrix[0][i], matrix[1][i]).convert('L'), matrix[2][i]).convert('L') for i in [0, 1, 2]]
+
+        log('image patterns')
+        log_image(row_pattern[0], row_pattern[1])
+        log_image(row_pattern[2], col_pattern[0])
+        log_image(col_pattern[1], col_pattern[2])
+
+        result_matrix = []
+        for i in [0, 1, 2]:
+            result_line = []
+            for j in [0, 1, 2]:
+                result_line.append(is_image_close(matrix[i][j], image_or(row_pattern[i], col_pattern[j]).convert('L')))
+            result_matrix.append(result_line)
+
+        result = np.all(result_matrix)
+        log('row_column_product = {}'.format(result_matrix))
+        return result + 0
+
+    def search_matrix(self, matrix):
         result_paths = []
 
         def compress_execution(dir, mtx, func, n_arg):
