@@ -7,12 +7,25 @@ import math
 from PIL import Image, ImageChops
 import numpy as np
 # np.set_printoptions(threshold=10000000)
+from functools import wraps
+
+def memoize(function):
+    memo = {}
+    @wraps(function)
+    def wrapper(*args):
+        try:
+            return memo[args]
+        except KeyError:
+            rv = function(*args)
+            memo[args] = rv
+            return rv
+    return wrapper
 
 # Select a specific question to evaluate, will be evaluated as name.startswith(PROBLEM_STARTS_WITH)
 # - '' (empty string) means all
 # - 'Basic Problem' means all basic problems
 # - 'Basic Problem B-10' means only basic problem B-10
-PROBLEM_STARTS_WITH = 'Basic Problem E'
+PROBLEM_STARTS_WITH = 'Basic Problem'
 
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
@@ -56,6 +69,7 @@ def rms_histogram(image1, image2):
 
 
 # vector
+@memoize
 def pixel_diff(image0, image1):
     """pixel diff represented as a image"""
     log('pixel_diff')
@@ -64,6 +78,7 @@ def pixel_diff(image0, image1):
     img = ImageChops.subtract(image0, image1, 2.0, 128)
     return img
 
+@memoize
 def darkness(image):
     # log('darkness(image)')
     # log_image(image, image)
@@ -79,18 +94,14 @@ def darkness_diff(image0, image1):
     log('darkness_diff = {}'.format(d))
     return d
 
+@memoize
 def rms_diff(image1, image2):
-    # darkness_correction = (darkness(image1) + darkness(image2))/2
-    darkness_correction = 1.0 #darkness(image_or(image1, image2))
-    log('darkness correction = {}'.format(darkness_correction))
-    errors = np.asarray(ImageChops.difference(image1, image2)) / 255.0
-    # print(errors)
+    mode_max = 1.0 if image1.mode == '1' else 255.0
+    errors = np.asarray(ImageChops.difference(image1, image2)) / mode_max
     result = np.sqrt(np.mean(np.square(errors)))
-    log('rms_diff (before correction) = {}'.format(result))
-    result = result / darkness_correction
-    log('rms_diff (after correction) = {}'.format(result))
     return  result
 
+@memoize
 def is_same_image(image1, image2):
     rms = rms_diff(image1, image2)
     # log('is_same_image', rms)
@@ -125,6 +136,7 @@ def log_image(img0, img1):
     for i in range(0, len(p0)):
         log('{}   {}'.format(p0[i], p1[i]))
 
+@memoize
 def is_image_close(image1, image2):
     log('is_image_close')
     log_image(image1, image2)
@@ -201,6 +213,7 @@ def log_diff(a, b):
 # def image_add(image0, image1):
 #     Image.fromarray(np.asarray(image0) - 255 + np.asarray(image1)))
 
+@memoize
 def image_and(image0, image1):
     img0 = ImageChops.invert(image0.convert('1'))
     img1 = ImageChops.invert(image1.convert('1'))
@@ -209,21 +222,23 @@ def image_and(image0, image1):
     result = ImageChops.invert(ImageChops.logical_and(img0, img1))
     log('image_and result')
     log_image(result, result)
-    return result.convert('L')
+    return result
 
+@memoize
 def image_or(image0, image1):
     img0 = ImageChops.invert(image0.convert('1'))
     img1 = ImageChops.invert(image1.convert('1'))
     log('image_or')
     result = ImageChops.invert(ImageChops.logical_or(img0, img1))
     log('image_or result')
-    return result.convert('L')
+    return result
 
+@memoize
 def image_xor(image0, image1):
     img0 = ImageChops.invert(image0.convert('1'))
     img1 = ImageChops.invert(image1.convert('1'))
     result = ImageChops.invert(ImageChops.logical_xor(img0, img1))
-    return result.convert('L')
+    return result
 
 def generate_logic_funcs():
     funcs = []
@@ -232,7 +247,7 @@ def generate_logic_funcs():
         i0 = (0 + shift) % 3
         i1 = (1 + shift) % 3
         i2 = (2 + shift) % 3
-        return lambda args: is_image_close(f(args[i0], args[i1]), args[i2].convert('1').convert('L'))
+        return lambda args: is_image_close(f(args[i0], args[i1]), args[i2].convert('1'))
 
     for f_name, f in zip(['and', 'or', 'xor'], [image_and, image_or, image_xor]):
         for format_str, shift in zip(['a_{}_b_is_c', 'b_{}_c_is_a', 'c_{}_a_is_b'], [0, 1, 2]):
