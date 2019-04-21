@@ -25,12 +25,12 @@ def memoize(function):
 # - '' (empty string) means all
 # - 'Basic Problem' means all basic problems
 # - 'Basic Problem B-10' means only basic problem B-10
-PROBLEM_STARTS_WITH = 'Basic Problem E-03'
+PROBLEM_STARTS_WITH = 'Basic Problem C'
 
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
 SAME_INCREMENTAL_DIFF_STD = 0.0002
-IS_IMAGE_CLOSE_THRESHOLD = 0.11
+IS_IMAGE_CLOSE_THRESHOLD = 0.12
 
 def convert_image(image):
     return image.convert('L')
@@ -80,18 +80,15 @@ def pixel_diff(image0, image1):
 
 @memoize
 def darkness(image):
-    # log('darkness(image)')
-    # log_image(image, image)
     mode_max = 1.0 if image.mode == '1' else 255.0
     img_data = np.asarray(ImageChops.invert(image))
     val = np.mean(img_data/ mode_max)
-    log('darkness = {}'.format(val))
     return val
 
 # scalar
 def darkness_diff(image0, image1):
     """The difference of the degree of darkness"""
-    d = darkness(image0) - darkness(image1)
+    d = darkness(image1) - darkness(image0)
     log('darkness_diff = {}'.format(d))
     return d
 
@@ -203,7 +200,7 @@ def is_geometric_sequence(seq):
     return np.allclose(d, np.roll(d, 1))
 
 def is_close(a, b):
-    return np.isclose(a, b)
+    return np.isclose(a, b, rtol=1.e-1)
 
 def diff(a, b):
     return a - b
@@ -533,10 +530,6 @@ class LocalPatternChecker:
     def search_matrix(self, matrix, choice):
         result_paths = []
 
-        for row in matrix:
-            for m in row:
-                log('darkness in matrix: {}'.format(darkness(m)))
-
         def compress_execution(dir, mtx, func, n_arg):
             n_row = len(mtx)
             n_col = len(mtx[0])
@@ -612,7 +605,7 @@ class LocalPatternChecker:
 
                 if data_type == 'image':
                     sum += compress_by_type([pixel_diff], 2, 'image')
-                    sum += compress_by_type([rms_diff, darkness_diff], 2, 'number')
+                    sum += compress_by_type([darkness_diff], 2, 'number')
                     # sum += compress_by_type([is_image_close], 2, 'boolean')
                     sum += compress_by_type(LOGIC_FUNCS, 3, 'boolean')
                 elif data_type == 'number':
@@ -633,7 +626,6 @@ class LocalPatternChecker:
                             m = transpose_matrix(rotate_dir, shifted_m, rotate)
                             transpose_sum += dfs('{}(shift({})) {}(rotate({}))'.format(dir, offset, rotate_dir, rotate), dict(data=m, type='image'))
                 else:
-                    log('darkness in shifted {}'.format(darkness(m)))
                     transpose_sum += dfs('{}(shift({}))'.format(dir, offset), dict(data=shifted_m, type='image'))
 
         return transpose_sum, result_paths
@@ -685,7 +677,7 @@ class GlobalPatternChecker:
         for (pairs, pred) in zip(pair_arry, preds):
             result = [self.problem.check_all_pairs([p.replace('?', c) for p in pairs], pred) for c in self.problem.choice_keys]
             score = np.array([1 if b else 0 for b in result])
-            # log(score)
+            log('pairs = {}, score = {}'.format(pairs, score))
             score_acc += score
 
         return score_acc
