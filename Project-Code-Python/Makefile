@@ -1,7 +1,7 @@
 .phony: all debug plot clean profile
 
 all:
-	@env XH_DEBUG=0 python RavensProject.py
+	@env XH_DEBUG=0 time python RavensProject.py
 	@echo "============= Result Summary ==============="
 	@cat SetResults.csv
 	@echo "============= Incorrect answers ============"
@@ -11,7 +11,7 @@ profile:
 	@env XH_DEBUG=0 python -m cProfile -s cumtime RavensProject.py 
 
 debug:
-	@env XH_DEBUG=1 python RavensProject.py
+	@env XH_DEBUG=1 time python RavensProject.py
 	@echo "============= Result Summary ==============="
 	@cat SetResults.csv
 	@echo "============= Incorrect answers ============"

@@ -25,12 +25,12 @@ def memoize(function):
 # - '' (empty string) means all
 # - 'Basic Problem' means all basic problems
 # - 'Basic Problem B-10' means only basic problem B-10
-PROBLEM_STARTS_WITH = 'Basic Problem'
+PROBLEM_STARTS_WITH = 'Basic Problem E-03'
 
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
 SAME_INCREMENTAL_DIFF_STD = 0.0002
-IS_IMAGE_CLOSE_THRESHOLD = 0.16
+IS_IMAGE_CLOSE_THRESHOLD = 0.11
 
 def convert_image(image):
     return image.convert('L')
@@ -82,8 +82,9 @@ def pixel_diff(image0, image1):
 def darkness(image):
     # log('darkness(image)')
     # log_image(image, image)
+    mode_max = 1.0 if image.mode == '1' else 255.0
     img_data = np.asarray(ImageChops.invert(image))
-    val = np.mean(img_data/ 255.0)
+    val = np.mean(img_data/ mode_max)
     log('darkness = {}'.format(val))
     return val
 
@@ -140,10 +141,10 @@ def log_image(img0, img1):
 def is_image_close(image1, image2):
     log('is_image_close')
     log_image(image1, image2)
-    log('darknesses are: {}, {}'.format(darkness(image1), darkness(image2)))
     rms = rms_diff(image1, image2)
-    log('is_image_close rms_diff = {}'.format(rms))
-    return (rms <= IS_IMAGE_CLOSE_THRESHOLD)
+    result = (rms <= IS_IMAGE_CLOSE_THRESHOLD)
+    log('is_image_close rms_diff = {}, result = {}'.format(rms, result))
+    return result
 
 LOG_DEST=sys.stdout
 
@@ -263,7 +264,7 @@ def generate_logic_funcs():
 
     for f_name, shift in zip(['darkness:a+b=c', 'darkness:b+c=a', 'darkness:c+a=b'], [0, 1, 2]):
         new_func = func_factory2(shift)
-        # new_func.__name__ = format_str.format('darkness')
+        new_func.__name__ = f_name
         funcs.append(new_func)
     
     def func_factory3(shift, template):
