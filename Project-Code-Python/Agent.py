@@ -117,6 +117,9 @@ def image2ascii(img):
     return list("".join(r) for r in chars[img_arr.astype(int)])
 
 def log_image(img0, img1):
+    if not LOG_FLAG:
+        return
+
     p0 = image2ascii(img0)
     p1 = image2ascii(img1)
     for i in range(0, len(p0)):
@@ -141,10 +144,11 @@ def close_logfile():
     LOG_DEST.close()
     LOG_DEST=sys.stdout
 
+LOG_FLAG = (os.getenv('XH_DEBUG', "").lower() in ['1', 'true', 'on'])
+
 # log function, will not print message if env var XH_DEBUG is not set
 def log(*args):
-    flag = (os.getenv('XH_DEBUG', "").lower() in ['1', 'true', 'on'])
-    if flag:
+    if LOG_FLAG:
         print(*args, file=LOG_DEST)
 
 class ImageOperation:
@@ -218,9 +222,7 @@ def image_or(image0, image1):
 def image_xor(image0, image1):
     img0 = ImageChops.invert(image0.convert('1'))
     img1 = ImageChops.invert(image1.convert('1'))
-    log('image_xor')
     result = ImageChops.invert(ImageChops.logical_xor(img0, img1))
-    log('image_xor result')
     return result.convert('L')
 
 def generate_logic_funcs():
@@ -237,6 +239,38 @@ def generate_logic_funcs():
             new_func = func_factory(f, shift)
             new_func.__name__ = format_str.format(f_name)
             funcs.append(new_func)
+    
+    def func_factory2(shift):
+        i0 = (0 + shift) % 3
+        i1 = (1 + shift) % 3
+        i2 = (2 + shift) % 3
+        return lambda args: is_close(darkness(args[i0])+darkness(args[i1]), darkness(args[i2]))
+
+    for f_name, shift in zip(['darkness:a+b=c', 'darkness:b+c=a', 'darkness:c+a=b'], [0, 1, 2]):
+        new_func = func_factory2(shift)
+        # new_func.__name__ = format_str.format('darkness')
+        funcs.append(new_func)
+    
+    def func_factory3(shift, template):
+        s = 'abc'
+        i = (np.asarray([0, 1, 2]) + shift) % 3
+        # x = lambda args: is_image_close(
+        #     ImageChops.difference(image_or(args[i[0]], args[i[1]]), image_and(args[i[0]], args[i[1]])), 
+        #     ImageChops.invert(args[i[2]]))
+        x = lambda args: is_image_close(ImageChops.difference(args[i[0]], args[i[1]]), args[i[2]])
+        x.__name__ = template.format(s[i[0]], s[i[1]], s[i[2]])
+        return x
+
+    # a or b - a and b
+    for shift in [0, 1, 2]:
+        new_func = func_factory3(shift, 'difference({},{})={}')
+        funcs.append(new_func)
+
+    new_func = lambda args: np.all([is_image_close(image_or(args[i % 3], args[(i+1) % 3]), image_or(args[(i+1) % 3], args[(i+2)%3])) for i in [0, 1, 2]])
+    new_func.__name__ = 'a_or_b=b_or_c'
+
+    funcs.append(new_func)
+
     return funcs
 
 LOGIC_FUNCS = generate_logic_funcs()
