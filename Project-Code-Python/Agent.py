@@ -1,6 +1,7 @@
 # ** encoding: utf-8 **
 from __future__ import print_function
 import os
+import sys
 import math
 # Install Pillow and uncomment this line to access image processing.
 from PIL import Image, ImageChops
@@ -11,16 +12,18 @@ import numpy as np
 # - '' (empty string) means all
 # - 'Basic Problem' means all basic problems
 # - 'Basic Problem B-10' means only basic problem B-10
-PROBLEM_STARTS_WITH = 'Basic Problem'
+PROBLEM_STARTS_WITH = 'Basic Problem E'
 
 SAME_IMAGE_MAX_RMS = 0.15
 SAME_DIFF_RMS_MAX = 0.001
 SAME_INCREMENTAL_DIFF_STD = 0.0002
+IS_IMAGE_CLOSE_THRESHOLD = 0.16
 
-def remove_alpha(image):
-    rgb = Image.new("RGB", image.size, (255, 255, 255))
-    rgb.paste(image, mask=image.split()[3])
-    return rgb
+def convert_image(image):
+    return image.convert('L')
+    # rgb = Image.new("RGB", image.size, (255, 255, 255))
+    # rgb.paste(image, mask=image.split()[3])
+    # return rgb
 
 def two_means(data):
     # return two clusters
@@ -55,22 +58,38 @@ def rms_histogram(image1, image2):
 # vector
 def pixel_diff(image0, image1):
     """pixel diff represented as a image"""
+    log('pixel_diff')
+    log_image(image0, image1)
     # img = ImageChops.difference(image0, image1)
     img = ImageChops.subtract(image0, image1, 2.0, 128)
     return img
 
+def darkness(image):
+    # log('darkness(image)')
+    # log_image(image, image)
+    img_data = np.asarray(ImageChops.invert(image))
+    val = np.mean(img_data/ 255.0)
+    log('darkness = {}'.format(val))
+    return val
+
 # scalar
 def darkness_diff(image0, image1):
     """The difference of the degree of darkness"""
-    darkness = lambda img: sum([i * val for i, val in enumerate(img.histogram())])
     d = darkness(image0) - darkness(image1)
     log('darkness_diff = {}'.format(d))
     return d
 
 def rms_diff(image1, image2):
+    # darkness_correction = (darkness(image1) + darkness(image2))/2
+    darkness_correction = 1.0 #darkness(image_or(image1, image2))
+    log('darkness correction = {}'.format(darkness_correction))
     errors = np.asarray(ImageChops.difference(image1, image2)) / 255.0
     # print(errors)
-    return np.sqrt(np.mean(np.square(errors)))
+    result = np.sqrt(np.mean(np.square(errors)))
+    log('rms_diff (before correction) = {}'.format(result))
+    result = result / darkness_correction
+    log('rms_diff (after correction) = {}'.format(result))
+    return  result
 
 def is_same_image(image1, image2):
     rms = rms_diff(image1, image2)
@@ -78,15 +97,24 @@ def is_same_image(image1, image2):
     return rms <= SAME_IMAGE_MAX_RMS
 
 def image2ascii(img):
-    SC = 0.2
+    # print('image size: {}'.format(img.size))
+    SC = 0.15
     WCF = 7/3.0
     # chars = np.asarray(list(' .,:;irsXA253hMHGS#9B&@'))
+    img = ImageChops.invert(img)
     chars = np.asarray(list(' .:iLFEPB#%'))
     S = ( int(round(img.size[0]*SC*WCF)), int(round(img.size[1]*SC)) )
-    img = np.sum( np.asarray( img.resize(S) ), axis=2)
-    # img -= img.min()
-    img = (img/(3*255.0))*(chars.size-1)
-    return list("".join(r) for r in chars[img.astype(int)])
+
+    img_arr = np.asarray(img.resize(S))
+    if img.mode == 'RGB' or img.mode == 'RGBA':
+        img_arr = np.sum( img_arr, axis=2)
+        img_arr = img_arr / (255.0 * len(img.mode))
+    elif img.mode == 'L':
+        img_arr = img_arr / 255.0
+
+    img_arr = img_arr*(chars.size-1)
+
+    return list("".join(r) for r in chars[img_arr.astype(int)])
 
 def log_image(img0, img1):
     p0 = image2ascii(img0)
@@ -95,20 +123,29 @@ def log_image(img0, img1):
         log('{}   {}'.format(p0[i], p1[i]))
 
 def is_image_close(image1, image2):
-    # log_image(image1, image2)
-    # log('image1')
-    # log('\n'.join(image2ascii(image1)))
-    # log('image2')
-    # log_image(image2)
+    log('is_image_close')
+    log_image(image1, image2)
+    log('darknesses are: {}, {}'.format(darkness(image1), darkness(image2)))
     rms = rms_diff(image1, image2)
-    log('rms = {}'.format(rms))
-    return (rms <= 0.1)
-    
+    log('is_image_close rms_diff = {}'.format(rms))
+    return (rms <= IS_IMAGE_CLOSE_THRESHOLD)
+
+LOG_DEST=sys.stdout
+
+def open_logfile(filename):
+    global LOG_DEST
+    LOG_DEST=open(filename, 'w')
+
+def close_logfile():
+    global LOG_DEST
+    LOG_DEST.close()
+    LOG_DEST=sys.stdout
+
 # log function, will not print message if env var XH_DEBUG is not set
 def log(*args):
     flag = (os.getenv('XH_DEBUG', "").lower() in ['1', 'true', 'on'])
     if flag:
-        print(*args)
+        print(*args, file=LOG_DEST)
 
 class ImageOperation:
     RMS_EQUAL_MAX = 0.15
@@ -157,6 +194,56 @@ def diff(a, b):
 def log_diff(a, b):
     return math.log(a) - math.log(b)
 
+# def image_add(image0, image1):
+#     Image.fromarray(np.asarray(image0) - 255 + np.asarray(image1)))
+
+def image_and(image0, image1):
+    img0 = ImageChops.invert(image0.convert('1'))
+    img1 = ImageChops.invert(image1.convert('1'))
+    log('image_and')
+    log_image(image0, image1)
+    result = ImageChops.invert(ImageChops.logical_and(img0, img1))
+    log('image_and result')
+    log_image(result, result)
+    return result.convert('L')
+
+def image_or(image0, image1):
+    img0 = ImageChops.invert(image0.convert('1'))
+    img1 = ImageChops.invert(image1.convert('1'))
+    log('image_or')
+    result = ImageChops.invert(ImageChops.logical_or(img0, img1))
+    log('image_or result')
+    return result.convert('L')
+
+def image_xor(image0, image1):
+    img0 = ImageChops.invert(image0.convert('1'))
+    img1 = ImageChops.invert(image1.convert('1'))
+    log('image_xor')
+    result = ImageChops.invert(ImageChops.logical_xor(img0, img1))
+    log('image_xor result')
+    return result.convert('L')
+
+def generate_logic_funcs():
+    funcs = []
+
+    def func_factory(f, shift):
+        i0 = (0 + shift) % 3
+        i1 = (1 + shift) % 3
+        i2 = (2 + shift) % 3
+        return lambda args: is_image_close(f(args[i0], args[i1]), args[i2].convert('1').convert('L'))
+
+    for f_name, f in zip(['and', 'or', 'xor'], [image_and, image_or, image_xor]):
+        for format_str, shift in zip(['a_{}_b_is_c', 'b_{}_c_is_a', 'c_{}_a_is_b'], [0, 1, 2]):
+            new_func = func_factory(f, shift)
+            new_func.__name__ = format_str.format(f_name)
+            funcs.append(new_func)
+    return funcs
+
+LOGIC_FUNCS = generate_logic_funcs()
+
+def read_image_from_file(filepath):
+    return convert_image(Image.open(filepath))
+
 class ProblemImages:
     KEYS = {
         '2x2': dict(matrix='ABC', choice='123456'),
@@ -170,7 +257,7 @@ class ProblemImages:
 
         self.rms_sum = 0
 
-        read_image = lambda k: remove_alpha(Image.open(figures.get(k).visualFilename))
+        read_image = lambda k: read_image_from_file(figures.get(k).visualFilename)
 
         self.keys = keys = ProblemImages.KEYS[self.type]
 
@@ -179,6 +266,7 @@ class ProblemImages:
 
         for k in keys['matrix'] + keys['choice']:
             self.images[k] = read_image(k)
+            log('darkness({}) = {}'.format(k, darkness(self.images[k])))
 
         data = []
         keys = self.images.keys()
@@ -379,7 +467,13 @@ class LocalPatternChecker:
         for c in self.problem.choice_keys:
             matrix = [[self.problem.images[k.replace('?', c)] for k in row] for row in m]
             log('-------- start choice {}'.format(c))
+            # replace logger
+            filename = 'logs/{}-choice-{}.txt'.format(self.problem.name, c).replace(' ', '-')
+            log('logfile name', filename)
+            open_logfile(filename)
             r, paths = self.search_matrix(matrix, c)
+            close_logfile()
+            # recover logger
             # print(c, r)
             log('======== result of choice: {}'.format(c) + '\n' + '\n'.join(paths) + '\n')
             result.append(r)
@@ -388,6 +482,10 @@ class LocalPatternChecker:
 
     def search_matrix(self, matrix, choice):
         result_paths = []
+
+        for row in matrix:
+            for m in row:
+                log('darkness in matrix: {}'.format(darkness(m)))
 
         def compress_execution(dir, mtx, func, n_arg):
             n_row = len(mtx)
@@ -434,6 +532,7 @@ class LocalPatternChecker:
             
             if data_type == 'boolean':
                 if np.all(np.asarray(mtx)):
+                    log('found one')
                     result_paths.append(path)
                     return 1
 
@@ -451,7 +550,7 @@ class LocalPatternChecker:
                     try:
                         return compress_execution(dir, mtx, func, n_arg)
                     except ValueError as e:
-                        log(path + ' {}({})'.format(dir, func.__name__), e)
+                        log(path + ' {}({}) exception: {}'.format(dir, func.__name__, e))
                         return None, False
                 def compress_by_type(funcs, n_arg, return_type):
                     result = 0
@@ -464,7 +563,8 @@ class LocalPatternChecker:
                 if data_type == 'image':
                     sum += compress_by_type([pixel_diff], 2, 'image')
                     sum += compress_by_type([rms_diff, darkness_diff], 2, 'number')
-                    sum += compress_by_type([is_image_close], 2, 'boolean')
+                    # sum += compress_by_type([is_image_close], 2, 'boolean')
+                    sum += compress_by_type(LOGIC_FUNCS, 3, 'boolean')
                 elif data_type == 'number':
                     sum += compress_by_type([diff, log_diff], 2, 'number')
                     sum += compress_by_type([is_close], 2, 'boolean')
@@ -483,6 +583,7 @@ class LocalPatternChecker:
                             m = transpose_matrix(rotate_dir, shifted_m, rotate)
                             transpose_sum += dfs('{}(shift({})) {}(rotate({}))'.format(dir, offset, rotate_dir, rotate), dict(data=m, type='image'))
                 else:
+                    log('darkness in shifted {}'.format(darkness(m)))
                     transpose_sum += dfs('{}(shift({}))'.format(dir, offset), dict(data=shifted_m, type='image'))
 
         return transpose_sum, result_paths
